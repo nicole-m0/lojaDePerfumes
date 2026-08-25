@@ -1,3 +1,4 @@
+// implementar dashboard com painel administrativo para gerenciar produtos, pedidos e clientes.
 import { Link } from 'react-router-dom'
 import { Minus, Plus, ShoppingBag, Trash2, X } from 'lucide-react'
 import { useCart } from '../context/useCart'
