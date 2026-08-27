@@ -1,3 +1,5 @@
+'use client'
+
 import { CheckCircle2, X } from 'lucide-react'
 import { useCart } from '../context/useCart'
 import ProductVisual from './ProductVisual'

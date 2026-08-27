@@ -1,4 +1,6 @@
-import { Link } from 'react-router-dom'
+'use client'
+
+import Link from 'next/link'
 import { ShoppingBag } from 'lucide-react'
 import type { Product } from '../types'
 import { discountPercent, formatPrice } from '../lib/format'
@@ -11,7 +13,7 @@ export default function ProductCard({ product }: { product: Product }) {
 
   return (
     <Link
-      to={`/produto/${product.slug}`}
+      href={`/produto/${product.slug}`}
       className="group relative flex flex-col overflow-hidden rounded-2xl border border-venus-100 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-glow-lg"
     >
       <div className="relative aspect-square w-full overflow-hidden">

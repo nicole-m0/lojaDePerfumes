@@ -1,36 +1,25 @@
-import { useEffect, useState } from 'react'
-import { Link, Navigate, useParams } from 'react-router-dom'
-import { ChevronRight, Minus, Plus, ShieldCheck, ShoppingBag, Star, Truck } from 'lucide-react'
-import { getProductBySlug, getRelatedProducts } from '../data/products'
-import { useCart } from '../context/useCart'
-import { discountPercent, formatPrice } from '../lib/format'
-import { buildProductMessage, buildWhatsAppUrl } from '../lib/whatsapp'
-import ProductVisual from '../components/ProductVisual'
-import ProductCard from '../components/ProductCard'
+'use client'
 
-export default function ProductDetail() {
-  const { slug } = useParams<{ slug: string }>()
-  const product = slug ? getProductBySlug(slug) : undefined
+import { useState } from 'react'
+import Link from 'next/link'
+import { ChevronRight, Minus, Plus, ShieldCheck, ShoppingBag, Star, Truck } from 'lucide-react'
+import type { Product } from '@/types'
+import { useCart } from '@/context/useCart'
+import { discountPercent, formatPrice } from '@/lib/format'
+import { buildProductMessage, buildWhatsAppUrl } from '@/lib/whatsapp'
+import ProductVisual from '@/components/ProductVisual'
+import ProductCard from '@/components/ProductCard'
+
+interface ProductDetailViewProps {
+  product: Product
+  related: Product[]
+}
+
+export default function ProductDetailView({ product, related }: ProductDetailViewProps) {
   const [quantity, setQuantity] = useState(1)
   const { addItem } = useCart()
 
-  // Reseta a quantidade selecionada ao navegar para outro produto
-  const [loadedSlug, setLoadedSlug] = useState(slug)
-  if (slug !== loadedSlug) {
-    setLoadedSlug(slug)
-    setQuantity(1)
-  }
-
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }, [slug])
-
-  if (!product) {
-    return <Navigate to="/404" replace />
-  }
-
   const discount = discountPercent(product.price, product.originalPrice)
-  const related = getRelatedProducts(product)
 
   const handleAddToCart = () => {
     addItem(product, quantity)
@@ -39,11 +28,14 @@ export default function ProductDetail() {
   return (
     <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-20 sm:px-6">
       <nav className="flex items-center gap-1.5 py-4 text-xs text-neutral-400">
-        <Link to="/" className="hover:text-venus-600">
+        <Link href="/" className="hover:text-venus-600">
           Início
         </Link>
         <ChevronRight className="h-3 w-3" />
-        <Link to={`/?categoria=${encodeURIComponent(product.category)}`} className="hover:text-venus-600">
+        <Link
+          href={`/?categoria=${encodeURIComponent(product.category)}`}
+          className="hover:text-venus-600"
+        >
           {product.category}
         </Link>
         <ChevronRight className="h-3 w-3" />
@@ -52,7 +44,11 @@ export default function ProductDetail() {
 
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-2">
         <div className="overflow-hidden rounded-3xl border border-venus-100">
-          <ProductVisual product={product} className="aspect-square w-full" iconClassName="h-32 w-32 sm:h-40 sm:w-40" />
+          <ProductVisual
+            product={product}
+            className="aspect-square w-full"
+            iconClassName="h-32 w-32 sm:h-40 sm:w-40"
+          />
         </div>
 
         <div className="flex flex-col">

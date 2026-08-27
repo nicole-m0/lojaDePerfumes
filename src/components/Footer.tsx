@@ -1,4 +1,5 @@
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
+import Image from 'next/image'
 import { Camera, MessageCircle } from 'lucide-react'
 import { STORE_WHATSAPP_NUMBER, STORE_TAGLINE } from '../config/store'
 import { categories } from '../data/products'
@@ -9,8 +10,8 @@ export default function Footer() {
     <footer className="mt-16 border-t border-venus-100 bg-white">
       <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-3">
         <div>
-          <Link to="/" className="flex items-center gap-1.5">
-            <img src={venusFlower} alt="" className="h-8 w-auto" />
+          <Link href="/" className="flex items-center gap-1.5">
+            <Image src={venusFlower} alt="" className="h-8 w-auto" />
             <span className="font-script text-2xl text-venus-600">Vênus</span>
           </Link>
           <p className="mt-3 max-w-xs text-sm text-neutral-500">{STORE_TAGLINE}</p>
@@ -43,7 +44,10 @@ export default function Footer() {
           <ul className="space-y-2 text-sm text-neutral-500">
             {categories.slice(0, 6).map((category) => (
               <li key={category}>
-                <Link to={`/?categoria=${encodeURIComponent(category)}`} className="hover:text-venus-600">
+                <Link
+                  href={`/?categoria=${encodeURIComponent(category)}`}
+                  className="hover:text-venus-600"
+                >
                   {category}
                 </Link>
               </li>

@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { SprayCan } from 'lucide-react'
 
 export default function NotFound() {
@@ -12,7 +12,7 @@ export default function NotFound() {
         O produto ou a página que você procura não existe ou foi removida.
       </p>
       <Link
-        to="/"
+        href="/"
         className="mt-6 rounded-full bg-venus-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-venus-700"
       >
         Voltar para a loja

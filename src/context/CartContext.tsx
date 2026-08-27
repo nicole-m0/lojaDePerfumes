@@ -1,3 +1,5 @@
+'use client'
+
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { CartItem, Product } from '../types'
 import { CartContext, type CartContextValue, type CartNotification } from './cart-context'

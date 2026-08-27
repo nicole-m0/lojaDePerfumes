@@ -1,10 +1,12 @@
+'use client'
+
 import { useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'next/navigation'
 import { SlidersHorizontal, X } from 'lucide-react'
-import { products } from '../data/products'
-import ProductCard from '../components/ProductCard'
-import FilterSidebar, { type Filters } from '../components/FilterSidebar'
-import type { ProductCategory } from '../types'
+import { products } from '@/data/products'
+import ProductCard from '@/components/ProductCard'
+import FilterSidebar, { type Filters } from '@/components/FilterSidebar'
+import type { ProductCategory } from '@/types'
 
 const EMPTY_FILTERS: Filters = {
   categories: [],
@@ -14,8 +16,8 @@ const EMPTY_FILTERS: Filters = {
   onlyPromo: false,
 }
 
-export default function Home() {
-  const [searchParams] = useSearchParams()
+export default function HomeView() {
+  const searchParams = useSearchParams()
   const query = searchParams.get('q')?.toLowerCase().trim() ?? ''
   const categoriaParam = searchParams.get('categoria') as ProductCategory | null
 
