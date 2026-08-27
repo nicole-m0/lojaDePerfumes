@@ -18,7 +18,11 @@ interface ImageManagerProps {
   onChange: (images: ProductImageInput[]) => void
 }
 
+// O CldUploadWidget faz upload assinado e exige as duas variáveis públicas.
+// Sem qualquer uma delas, mantém-se o fallback de URL colada (evita HTTP 500).
 const CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
+const CLOUD_API_KEY = process.env.NEXT_PUBLIC_CLOUDINARY_API_KEY
+const uploadEnabled = Boolean(CLOUD_NAME && CLOUD_API_KEY)
 
 export default function ImageManager({ value, onChange }: ImageManagerProps) {
   const [urlDraft, setUrlDraft] = useState('')
@@ -61,7 +65,7 @@ export default function ImageManager({ value, onChange }: ImageManagerProps) {
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        {CLOUD_NAME ? (
+        {uploadEnabled ? (
           <CldUploadWidget
             signatureEndpoint="/api/cloudinary/sign"
             options={{ folder: 'loja-venus/produtos', multiple: true, sources: ['local', 'url'] }}
