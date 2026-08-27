@@ -1,8 +1,5 @@
 'use client'
 
-// O branch se chama phase-0-nextjs-foundation mas já contém as duas fases. Quer que eu faça o commit da Fase 1 nesse branch, 
-// ou prefere revisar/testar contra o Railway antes de eu seguir para a Fase 2 (clientes, pedidos e checkout com repreço no servidor)?
-
 import Link from 'next/link'
 import { Minus, Plus, ShoppingBag, Trash2, X } from 'lucide-react'
 import { useCart } from '../context/useCart'
