@@ -1,14 +1,17 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { products } from '@/data/products'
+import { countProducts } from '@/server/catalog'
 
-export default function AdminDashboardPage() {
+export const dynamic = 'force-dynamic'
+
+export default async function AdminDashboardPage() {
+  const productCount = await countProducts().catch(() => null)
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Dashboard</h1>
         <p className="text-sm text-muted-foreground">
-          Fundação pronta (Fase 0). Catálogo, pedidos, estoque e financeiro chegam nas próximas
-          fases.
+          Catálogo já no banco (Fase 1). Pedidos, estoque e financeiro chegam nas próximas fases.
         </p>
       </div>
 
@@ -16,10 +19,12 @@ export default function AdminDashboardPage() {
         <Card>
           <CardHeader>
             <CardDescription>Produtos no catálogo</CardDescription>
-            <CardTitle className="text-3xl">{products.length}</CardTitle>
+            <CardTitle className="text-3xl">{productCount ?? '—'}</CardTitle>
           </CardHeader>
           <CardContent className="text-xs text-muted-foreground">
-            Ainda em arquivo estático — migra para o banco na Fase 1.
+            {productCount === null
+              ? 'Banco indisponível — verifique DATABASE_URL.'
+              : 'Gerencie em Produtos.'}
           </CardContent>
         </Card>
 

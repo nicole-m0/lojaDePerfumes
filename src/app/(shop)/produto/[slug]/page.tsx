@@ -1,19 +1,17 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { getProductBySlug, getRelatedProducts, products } from '@/data/products'
+import { getRelatedShopProducts, getShopProductBySlug } from '@/server/catalog'
 import ProductDetailView from '@/components/ProductDetailView'
 
 interface PageProps {
   params: Promise<{ slug: string }>
 }
 
-export function generateStaticParams() {
-  return products.map((product) => ({ slug: product.slug }))
-}
+export const dynamic = 'force-dynamic'
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params
-  const product = getProductBySlug(slug)
+  const product = await getShopProductBySlug(slug)
   if (!product) return { title: 'Produto não encontrado' }
 
   return {
@@ -22,16 +20,17 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     openGraph: {
       title: product.name,
       description: product.description,
+      images: product.imageUrl ? [{ url: product.imageUrl }] : undefined,
     },
   }
 }
 
 export default async function ProductPage({ params }: PageProps) {
   const { slug } = await params
-  const product = getProductBySlug(slug)
+  const product = await getShopProductBySlug(slug)
   if (!product) notFound()
 
-  const related = getRelatedProducts(product)
+  const related = await getRelatedShopProducts(product)
 
   return <ProductDetailView product={product} related={related} />
 }

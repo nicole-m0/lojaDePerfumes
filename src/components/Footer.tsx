@@ -2,10 +2,12 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { Camera, MessageCircle } from 'lucide-react'
 import { STORE_WHATSAPP_NUMBER, STORE_TAGLINE } from '../config/store'
-import { categories } from '../data/products'
+import { listShopCategories } from '@/server/catalog'
 import venusFlower from '../assets/venus-flower.png'
 
-export default function Footer() {
+export default async function Footer() {
+  const categories = await listShopCategories().catch(() => [])
+
   return (
     <footer className="mt-16 border-t border-venus-100 bg-white">
       <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-3">
@@ -43,12 +45,12 @@ export default function Footer() {
           </h4>
           <ul className="space-y-2 text-sm text-neutral-500">
             {categories.slice(0, 6).map((category) => (
-              <li key={category}>
+              <li key={category.slug}>
                 <Link
-                  href={`/?categoria=${encodeURIComponent(category)}`}
+                  href={`/?categoria=${encodeURIComponent(category.name)}`}
                   className="hover:text-venus-600"
                 >
-                  {category}
+                  {category.name}
                 </Link>
               </li>
             ))}

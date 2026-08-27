@@ -2,11 +2,12 @@
 
 Loja virtual de perfumes, cosméticos e presentes femininos.
 
-**Stack:** Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui · Prisma · PostgreSQL · Auth.js (NextAuth v5).
+**Stack:** Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui · Prisma · PostgreSQL · Auth.js (NextAuth v5) · Cloudinary.
 
-> Migrada de uma SPA Vite para Next.js full-stack na **Fase 0**. A loja pública
-> mantém a mesma aparência; a fundação de banco, autenticação e painel
-> administrativo já está no lugar para as próximas fases.
+> **Fase 0** — migração da SPA Vite para Next.js full-stack (fundação de banco, auth e painel).
+> **Fase 1** — catálogo no banco (categorias, marcas, produtos, imagens, especificações),
+> CRUD no painel e upload de imagens via Cloudinary. A loja pública lê do banco e
+> reflete os filtros na URL; sem imagem real, cai no degradê + ícone da SPA original.
 
 ## Pré-requisitos
 
@@ -19,8 +20,8 @@ Loja virtual de perfumes, cosméticos e presentes femininos.
 npm install
 cp .env.example .env       # preencha DATABASE_URL, AUTH_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD
 npx auth secret            # gera e grava AUTH_SECRET no .env (ou defina manualmente)
-npm run prisma:migrate     # cria as tabelas no banco
-npm run db:seed            # cria o usuário administrador inicial
+npm run prisma:migrate     # cria as tabelas (auth + catálogo)
+npm run db:seed            # cria o admin + popula o catálogo (data/products.ts)
 npm run dev
 ```
 
@@ -47,29 +48,32 @@ npm run dev
 ```
 src/
 ├── app/
-│   ├── (shop)/              # loja pública (Header/Footer/carrinho + páginas)
-│   │   ├── page.tsx         # vitrine com busca e filtros
-│   │   └── produto/[slug]/  # página de detalhe do produto
+│   ├── (shop)/                 # loja pública (lê do banco; filtros na URL)
+│   │   ├── page.tsx            # vitrine com busca e filtros
+│   │   ├── produto/[slug]/     # página de detalhe do produto
+│   │   └── error.tsx           # fallback se o catálogo não carregar
 │   ├── (admin)/admin/
-│   │   ├── login/           # login da equipe
-│   │   └── (dashboard)/     # painel autenticado (shell + dashboard)
+│   │   ├── login/              # login da equipe
+│   │   └── (dashboard)/        # painel autenticado
+│   │       ├── produtos/       # lista + novo + [id] (CRUD) + actions.ts
+│   │       └── categorias/     # categorias & marcas + actions.ts
 │   ├── api/
-│   │   ├── auth/[...nextauth]/  # rotas do Auth.js
+│   │   ├── auth/[...nextauth]/ # rotas do Auth.js
+│   │   ├── cloudinary/sign/    # assinatura de upload (staff)
 │   │   └── health/             # health check (app + banco)
-│   ├── layout.tsx          # layout raiz (metadata, <html>)
-│   ├── globals.css         # Tailwind v4 + tema "venus" + tokens shadcn
-│   └── not-found.tsx
-├── components/              # UI da loja + `ui/` (shadcn) + `admin/`
-├── context/                # CartContext (carrinho em localStorage)
-├── config/store.ts         # nome/WhatsApp/tagline (via env; vai para o banco na Fase 1)
-├── data/products.ts        # catálogo estático (fonte do seed na Fase 1)
-├── lib/                    # prisma, utils, format, whatsapp
-├── auth.ts / auth.config.ts # configuração do Auth.js
-└── middleware.ts           # protege /admin/*
+│   ├── layout.tsx · globals.css · not-found.tsx
+├── components/                 # UI da loja + `ui/` (shadcn) + `admin/`
+├── server/                     # camada de dados (server-only): catalog.ts, guard.ts
+├── context/                    # CartContext (carrinho em localStorage)
+├── config/store.ts             # nome/WhatsApp/tagline (via env)
+├── data/products.ts            # catálogo de origem — usado só pelo seed
+├── lib/                        # prisma, cloudinary, utils, format, slug, whatsapp
+├── auth.ts / auth.config.ts    # configuração do Auth.js
+└── middleware.ts               # protege /admin/*
 
 prisma/
-├── schema.prisma           # Fase 0: User/Account/Session + Setting
-└── seed.ts                 # usuário admin inicial
+├── schema.prisma               # auth + Setting + catálogo (Category/Brand/Product/…)
+└── seed.ts                     # usuário admin + catálogo a partir de data/products.ts
 ```
 
 ## Deploy
@@ -77,8 +81,17 @@ prisma/
 - **App:** Vercel (defina as variáveis do `.env.example` no projeto).
 - **Banco:** PostgreSQL no Railway (use a connection string interna em produção).
 
+## Imagens (Cloudinary)
+
+Opcional para desenvolvimento — sem as chaves, o admin aceita URL de imagem colada
+e a loja usa o degradê + ícone como fallback. Para habilitar upload:
+
+1. Crie uma conta em [cloudinary.com](https://cloudinary.com).
+2. Preencha `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`.
+3. Confira o hostname em `next.config.ts` (`images.remotePatterns`).
+
 ## Antes de publicar
 
-- Número de WhatsApp e nome da loja: variáveis `NEXT_PUBLIC_STORE_*`.
-- Catálogo: `src/data/products.ts` (até a migração para o banco na Fase 1).
+- Número de WhatsApp e nome da loja: variáveis `NEXT_PUBLIC_STORE_*` (vão para a tabela `Setting` numa próxima fase).
+- Catálogo: gerenciado no painel (`/admin/produtos`). `src/data/products.ts` é só a carga inicial do seed.
 - Logo/ícones: `public/favicon*.png`.

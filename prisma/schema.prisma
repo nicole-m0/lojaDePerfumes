@@ -1,7 +1,7 @@
 // Loja Vênus — schema Prisma
-// Fase 0: apenas autenticação (Auth.js) + configurações da loja.
-// As demais entidades (catálogo, pedidos, estoque, financeiro, entregas, fiscal)
-// entram nas fases seguintes.
+// Fase 0: autenticação (Auth.js) + configurações da loja.
+// Fase 1: catálogo (categorias, marcas, produtos, imagens, especificações).
+// Pedidos, estoque, financeiro, entregas e fiscal entram nas fases seguintes.
 
 generator client {
   provider = "prisma-client-js"
@@ -73,11 +73,105 @@ model VerificationToken {
 }
 
 // ---------------------------------------------------------------------------
-// Configurações da loja (substitui src/config/store.ts a partir da Fase 1)
+// Configurações da loja (substitui src/config/store.ts)
 // ---------------------------------------------------------------------------
 
 model Setting {
   key       String   @id
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Catálogo (Fase 1)
+// ---------------------------------------------------------------------------
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  slug      String    @unique
+  position  Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  products Product[]
+}
+
+model Brand {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  slug      String    @unique
+  position  Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  products Product[]
+}
+
+model Product {
+  id                  String        @id @default(cuid())
+  slug                String        @unique
+  name                String
+  description         String
+  status              ProductStatus @default(DRAFT)
+  featured            Boolean       @default(false)
+
+  // Dinheiro sempre em centavos (inteiro). A UI converte para reais na borda.
+  priceCents          Int
+  compareAtPriceCents Int?
+
+  // Avaliações — herdadas do catálogo estático; sistema de reviews é fase futura.
+  ratingAvg           Float         @default(0)
+  ratingCount         Int           @default(0)
+
+  // Fallback visual quando não há imagem (degradê + ícone), como na SPA original.
+  iconKey             String?
+  gradient            String?
+
+  categoryId          String
+  brandId             String
+  category            Category      @relation(fields: [categoryId], references: [id])
+  brand               Brand         @relation(fields: [brandId], references: [id])
+
+  images              ProductImage[]
+  specs               ProductSpec[]
+
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@index([categoryId])
+  @@index([brandId])
+  @@index([status])
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String
+  url       String
+  publicId  String?
+  alt       String?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+}
+
+model ProductSpec {
+  id        String @id @default(cuid())
+  productId String
+  label     String
+  value     String
+  position  Int    @default(0)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
 }

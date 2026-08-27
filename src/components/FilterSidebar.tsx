@@ -1,9 +1,6 @@
-import { categories, brands } from '../data/products'
-import type { ProductBrand, ProductCategory } from '../types'
-
 export interface Filters {
-  categories: ProductCategory[]
-  brands: ProductBrand[]
+  categories: string[]
+  brands: string[]
   minPrice: string
   maxPrice: string
   onlyPromo: boolean
@@ -12,14 +9,22 @@ export interface Filters {
 interface FilterSidebarProps {
   filters: Filters
   onChange: (filters: Filters) => void
+  categories: string[]
+  brands: string[]
   className?: string
 }
 
-function toggleValue<T>(list: T[], value: T): T[] {
+function toggleValue(list: string[], value: string): string[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value]
 }
 
-export default function FilterSidebar({ filters, onChange, className = '' }: FilterSidebarProps) {
+export default function FilterSidebar({
+  filters,
+  onChange,
+  categories,
+  brands,
+  className = '',
+}: FilterSidebarProps) {
   return (
     <aside className={`space-y-6 ${className}`}>
       <div>

@@ -1,12 +1,17 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { SlidersHorizontal, X } from 'lucide-react'
-import { products } from '@/data/products'
+import type { Product } from '@/types'
 import ProductCard from '@/components/ProductCard'
 import FilterSidebar, { type Filters } from '@/components/FilterSidebar'
-import type { ProductCategory } from '@/types'
+
+interface HomeViewProps {
+  products: Product[]
+  categories: string[]
+  brands: string[]
+}
 
 const EMPTY_FILTERS: Filters = {
   categories: [],
@@ -16,24 +21,44 @@ const EMPTY_FILTERS: Filters = {
   onlyPromo: false,
 }
 
-export default function HomeView() {
+function filtersFromParams(params: URLSearchParams): Filters {
+  return {
+    categories: params.getAll('categoria'),
+    brands: params.getAll('marca'),
+    minPrice: params.get('min') ?? '',
+    maxPrice: params.get('max') ?? '',
+    onlyPromo: params.get('promo') === '1',
+  }
+}
+
+function filtersToParams(filters: Filters, query: string): URLSearchParams {
+  const params = new URLSearchParams()
+  if (query) params.set('q', query)
+  filters.categories.forEach((c) => params.append('categoria', c))
+  filters.brands.forEach((b) => params.append('marca', b))
+  if (filters.minPrice) params.set('min', filters.minPrice)
+  if (filters.maxPrice) params.set('max', filters.maxPrice)
+  if (filters.onlyPromo) params.set('promo', '1')
+  return params
+}
+
+export default function HomeView({ products, categories, brands }: HomeViewProps) {
+  const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
   const query = searchParams.get('q')?.toLowerCase().trim() ?? ''
-  const categoriaParam = searchParams.get('categoria') as ProductCategory | null
 
-  const [filters, setFilters] = useState<Filters>(
-    categoriaParam ? { ...EMPTY_FILTERS, categories: [categoriaParam] } : EMPTY_FILTERS,
-  )
+  const [filters, setFilters] = useState<Filters>(() => filtersFromParams(searchParams))
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
 
-  // Sincroniza o filtro de categoria quando o usuário chega por um link com ?categoria=
-  const [appliedCategoriaParam, setAppliedCategoriaParam] = useState(categoriaParam)
-  if (categoriaParam !== appliedCategoriaParam) {
-    setAppliedCategoriaParam(categoriaParam)
-    if (categoriaParam) {
-      setFilters((f) => ({ ...f, categories: [categoriaParam] }))
-    }
-  }
+  // Reflete os filtros na URL (compartilhável / navegável), sem rolar a página.
+  const lastPushed = useRef('')
+  useEffect(() => {
+    const next = filtersToParams(filters, searchParams.get('q') ?? '').toString()
+    if (next === lastPushed.current) return
+    lastPushed.current = next
+    router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false })
+  }, [filters, pathname, router, searchParams])
 
   const filtered = useMemo(() => {
     return products.filter((product) => {
@@ -45,7 +70,7 @@ export default function HomeView() {
       if (filters.onlyPromo && !product.originalPrice) return false
       return true
     })
-  }, [query, filters])
+  }, [products, query, filters])
 
   return (
     <main className="mx-auto w-full max-w-7xl flex-1 px-4 sm:px-6">
@@ -79,7 +104,13 @@ export default function HomeView() {
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-8 pb-16 sm:mt-8 lg:grid-cols-[220px_1fr]">
-        <FilterSidebar filters={filters} onChange={setFilters} className="hidden lg:block" />
+        <FilterSidebar
+          filters={filters}
+          onChange={setFilters}
+          categories={categories}
+          brands={brands}
+          className="hidden lg:block"
+        />
 
         {mobileFiltersOpen && (
           <div className="fixed inset-0 z-50 flex lg:hidden">
@@ -94,7 +125,12 @@ export default function HomeView() {
                   <X className="h-5 w-5 text-neutral-500" />
                 </button>
               </div>
-              <FilterSidebar filters={filters} onChange={setFilters} />
+              <FilterSidebar
+                filters={filters}
+                onChange={setFilters}
+                categories={categories}
+                brands={brands}
+              />
             </div>
           </div>
         )}

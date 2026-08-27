@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { LayoutDashboard, LogOut } from 'lucide-react'
+import { LayoutDashboard, LogOut, Package, Tags } from 'lucide-react'
 import { auth, signOut } from '@/auth'
 import { Button } from '@/components/ui/button'
 
@@ -10,16 +10,13 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 }
 
-const NAV_SOON = [
-  'Produtos',
-  'Categorias & Marcas',
-  'Estoque',
-  'Pedidos',
-  'Clientes',
-  'Entregas',
-  'Financeiro',
-  'Configurações',
+const NAV_LINKS = [
+  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/admin/produtos', label: 'Produtos', icon: Package },
+  { href: '/admin/categorias', label: 'Categorias & Marcas', icon: Tags },
 ]
+
+const NAV_SOON = ['Estoque', 'Pedidos', 'Clientes', 'Entregas', 'Financeiro', 'Configurações']
 
 export default async function AdminDashboardLayout({
   children,
@@ -36,13 +33,16 @@ export default async function AdminDashboardLayout({
         </div>
 
         <nav className="flex flex-col gap-0.5">
-          <Link
-            href="/admin"
-            className="flex items-center gap-2 rounded-md bg-sidebar-accent px-3 py-2 text-sm font-medium text-sidebar-accent-foreground"
-          >
-            <LayoutDashboard className="size-4" />
-            Dashboard
-          </Link>
+          {NAV_LINKS.map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            >
+              <Icon className="size-4" />
+              {label}
+            </Link>
+          ))}
 
           {NAV_SOON.map((label) => (
             <span
