@@ -48,7 +48,7 @@ export default async function AdminDashboardLayout({
             <span
               key={label}
               className="flex cursor-not-allowed items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground/60"
-              title="Disponível nas próximas fases"
+              title="Disponível em breve"
             >
               {label}
               <span className="ml-auto rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase">

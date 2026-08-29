@@ -11,7 +11,7 @@ export default async function AdminDashboardPage() {
       <div>
         <h1 className="text-2xl font-bold">Dashboard</h1>
         <p className="text-sm text-muted-foreground">
-          Catálogo já no banco (Fase 1). Pedidos, estoque e financeiro chegam nas próximas fases.
+          Visão geral do catálogo. Pedidos, estoque e financeiro chegam em breve.
         </p>
       </div>
 
@@ -33,7 +33,7 @@ export default async function AdminDashboardPage() {
             <CardDescription>Pedidos</CardDescription>
             <CardTitle className="text-3xl">—</CardTitle>
           </CardHeader>
-          <CardContent className="text-xs text-muted-foreground">Fase 2</CardContent>
+          <CardContent className="text-xs text-muted-foreground">Em breve</CardContent>
         </Card>
 
         <Card>
@@ -41,7 +41,7 @@ export default async function AdminDashboardPage() {
             <CardDescription>Estoque baixo</CardDescription>
             <CardTitle className="text-3xl">—</CardTitle>
           </CardHeader>
-          <CardContent className="text-xs text-muted-foreground">Fase 3</CardContent>
+          <CardContent className="text-xs text-muted-foreground">Em breve</CardContent>
         </Card>
 
         <Card>
@@ -49,7 +49,7 @@ export default async function AdminDashboardPage() {
             <CardDescription>Faturamento (mês)</CardDescription>
             <CardTitle className="text-3xl">—</CardTitle>
           </CardHeader>
-          <CardContent className="text-xs text-muted-foreground">Fase 6</CardContent>
+          <CardContent className="text-xs text-muted-foreground">Em breve</CardContent>
         </Card>
       </div>
     </div>
