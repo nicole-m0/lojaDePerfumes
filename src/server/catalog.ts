@@ -140,3 +140,81 @@ export async function listBrandsAdmin() {
 export async function countProducts() {
   return prisma.product.count()
 }
+
+// --- Estoque (somente leitura — Fase 2) --------------------------------
+
+/** Lista produtos com o saldo em cache (`stockOnHand`), menor estoque primeiro. */
+export async function listProductsStock() {
+  return prisma.product.findMany({
+    orderBy: [{ stockOnHand: 'asc' }, { name: 'asc' }],
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      stockOnHand: true,
+      category: { select: { name: true } },
+    },
+  })
+}
+
+// --- Carrinho / checkout (somente leitura — Fase 3) ------------------
+
+/**
+ * Produtos por id para hidratar o carrinho/checkout no servidor.
+ * Retorna todos (inclusive inativos) para a UI poder sinalizar indisponibilidade;
+ * quem decide o que é comprável é a Server Action `createWebsiteOrder`.
+ */
+export async function getProductsForCart(ids: string[]) {
+  const unique = [...new Set(ids)]
+  if (unique.length === 0) return []
+  return prisma.product.findMany({
+    where: { id: { in: unique } },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      status: true,
+      priceCents: true,
+      compareAtPriceCents: true,
+      iconKey: true,
+      gradient: true,
+      images: { orderBy: { position: 'asc' }, take: 1, select: { url: true } },
+    },
+  })
+}
+
+// --- Categoria + produtos relacionados (somente leitura — Fase 2) -----
+
+export async function getCategoryWithProducts(id: string) {
+  return prisma.category.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      products: {
+        orderBy: { name: 'asc' },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          priceCents: true,
+          stockOnHand: true,
+          brand: { select: { name: true } },
+        },
+      },
+    },
+  })
+}
+
+// --- Contagens para o dashboard (não-financeiras — Fase 2) -----------
+
+export async function getDashboardCounts() {
+  const [activeProducts, categories, brands, orders] = await Promise.all([
+    prisma.product.count({ where: { status: 'ACTIVE' } }),
+    prisma.category.count(),
+    prisma.brand.count(),
+    prisma.order.count(),
+  ])
+  return { activeProducts, categories, brands, orders }
+}

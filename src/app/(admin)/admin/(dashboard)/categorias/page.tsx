@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { listBrandsAdmin, listCategoriesAdmin } from '@/server/catalog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,7 +29,15 @@ function TaxonomyList({ kind, rows }: { kind: 'category' | 'brand'; rows: Row[] 
             </Button>
           </form>
 
-          <Badge variant="secondary">{row._count.products} prod.</Badge>
+          {kind === 'category' ? (
+            <Link href={`/admin/categorias/${row.id}`} title="Ver produtos da categoria">
+              <Badge variant="secondary" className="hover:bg-secondary/70">
+                {row._count.products} prod.
+              </Badge>
+            </Link>
+          ) : (
+            <Badge variant="secondary">{row._count.products} prod.</Badge>
+          )}
 
           <form action={deleteTaxonomy}>
             <input type="hidden" name="kind" value={kind} />

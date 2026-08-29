@@ -37,6 +37,10 @@ model User {
 
   accounts Account[]
   sessions Session[]
+
+  // Operações (pedidos/estoque): quem executou a movimentação / registrou o evento.
+  stockMovements StockMovement[]
+  orderEvents    OrderEvent[]
 }
 
 model Account {
@@ -93,57 +97,63 @@ enum ProductStatus {
 }
 
 model Category {
-  id        String    @id @default(cuid())
-  name      String    @unique
-  slug      String    @unique
-  position  Int       @default(0)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   products Product[]
 }
 
 model Brand {
-  id        String    @id @default(cuid())
-  name      String    @unique
-  slug      String    @unique
-  position  Int       @default(0)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   products Product[]
 }
 
 model Product {
-  id                  String        @id @default(cuid())
-  slug                String        @unique
-  name                String
-  description         String
-  status              ProductStatus @default(DRAFT)
-  featured            Boolean       @default(false)
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  name        String
+  description String
+  status      ProductStatus @default(DRAFT)
+  featured    Boolean       @default(false)
 
   // Dinheiro sempre em centavos (inteiro). A UI converte para reais na borda.
   priceCents          Int
   compareAtPriceCents Int?
 
+  // Estoque: saldo em cache. O livro-razão (histórico) fica em StockMovement.
+  // Sem baixa automática nesta etapa — apenas o campo.
+  stockOnHand Int @default(0)
+
   // Avaliações — herdadas do catálogo estático; sistema de reviews é fase futura.
-  ratingAvg           Float         @default(0)
-  ratingCount         Int           @default(0)
+  ratingAvg   Float @default(0)
+  ratingCount Int   @default(0)
 
   // Fallback visual quando não há imagem (degradê + ícone), como na SPA original.
-  iconKey             String?
-  gradient            String?
+  iconKey  String?
+  gradient String?
 
-  categoryId          String
-  brandId             String
-  category            Category      @relation(fields: [categoryId], references: [id])
-  brand               Brand         @relation(fields: [brandId], references: [id])
+  categoryId String
+  brandId    String
+  category   Category @relation(fields: [categoryId], references: [id])
+  brand      Brand    @relation(fields: [brandId], references: [id])
 
-  images              ProductImage[]
-  specs               ProductSpec[]
+  images         ProductImage[]
+  specs          ProductSpec[]
+  orderItems     OrderItem[]
+  stockMovements StockMovement[]
 
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([categoryId])
   @@index([brandId])
@@ -174,4 +184,335 @@ model ProductSpec {
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
+}
+
+// ---------------------------------------------------------------------------
+// Operações: clientes, pedidos, pagamentos, entregas, notas fiscais, estoque.
+// SOMENTE modelagem — carrinho/checkout/pagamento/WhatsApp/NF-e/estoque
+// automático NÃO são implementados nesta etapa.
+//
+// Dinheiro: sempre Int em centavos (padrão da Fase 1, helpers em src/lib/format.ts).
+// Endereço do pedido: snapshot imutável em OrderAddress (não referencia cadastro).
+// OrderItem: snapshot de nome/preço no momento da compra — nunca depende do
+// preço atual de Product; a FK com Product é só referência histórica.
+// ---------------------------------------------------------------------------
+
+enum OrderSource {
+  WEBSITE
+  WHATSAPP
+  // Novas origens entram por migration (ALTER TYPE ADD VALUE) — sem recriar a entidade.
+}
+
+enum OrderStatus {
+  DRAFT
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELED
+}
+
+// Status de pagamento é independente de OrderStatus.
+enum PaymentStatus {
+  PENDING
+  PAID
+  PARTIALLY_PAID
+  REFUNDED
+  CHARGEBACK
+  FAILED
+  CANCELED
+}
+
+enum PaymentMethod {
+  PIX
+  CREDIT_CARD
+  DEBIT_CARD
+  BOLETO
+  CASH
+  BANK_TRANSFER
+  OTHER
+}
+
+enum ShipmentStatus {
+  PENDING
+  READY
+  IN_TRANSIT
+  DELIVERED
+  RETURNED
+  CANCELED
+}
+
+enum InvoiceStatus {
+  PENDING
+  PROCESSING
+  AUTHORIZED
+  REJECTED
+  CANCELED
+  ERROR
+}
+
+enum StockMovementType {
+  INBOUND
+  OUTBOUND
+  ADJUSTMENT
+  RETURN
+}
+
+enum StockMovementReason {
+  PURCHASE
+  SALE
+  MANUAL_ADJUSTMENT
+  CUSTOMER_RETURN
+  LOSS
+  INVENTORY_COUNT
+  OTHER
+}
+
+enum OrderEventType {
+  ORDER_STATUS_CHANGED
+  PAYMENT_STATUS_CHANGED
+  NOTE
+}
+
+// --- Cliente da loja -------------------------------------------------------
+// NÃO é um usuário autenticado (User = staff do painel). Cliente não faz login.
+// Pedido pode existir sem Customer (guest / WhatsApp) — ver Order.customerId.
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?
+  phone     String?
+  document  String? // CPF/CNPJ — uso futuro
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders Order[]
+
+  @@index([email])
+  @@index([phone])
+}
+
+// --- Pedido (estrutura central única: site + WhatsApp) --------------------
+
+model Order {
+  id     String @id @default(cuid())
+  number Int    @unique @default(autoincrement()) // referência humana
+
+  source        OrderSource
+  status        OrderStatus   @default(DRAFT)
+  paymentStatus PaymentStatus @default(PENDING)
+
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+
+  // Snapshot de contato — funciona sem Customer (guest / WhatsApp).
+  customerName  String
+  customerEmail String?
+  customerPhone String?
+
+  // Valores em centavos (inteiro).
+  subtotalCents Int
+  discountCents Int    @default(0)
+  shippingCents Int    @default(0)
+  totalCents    Int
+  currency      String @default("BRL")
+
+  notes String?
+
+  items    OrderItem[]
+  address  OrderAddress?
+  payments Payment[]
+  shipment Shipment?
+  invoices Invoice[]
+  events   OrderEvent[]
+
+  stockMovements StockMovement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([source])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([customerId])
+  @@index([createdAt])
+}
+
+// --- Item do pedido (SNAPSHOT de preço no momento da compra) --------------
+
+model OrderItem {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // Referência histórica — Restrict impede apagar produto já vendido.
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  // Snapshot congelado na compra — NUNCA lê o preço atual de Product.
+  productName     String
+  productSlug     String
+  productImageUrl String?
+  unitPriceCents  Int
+  quantity        Int
+  discountCents   Int     @default(0)
+  totalCents      Int // unitPriceCents * quantity - discountCents
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+// --- Endereço do pedido (SNAPSHOT imutável) ------------------------------
+// Cópia dos dados no momento do pedido. Alterar cadastro do cliente no
+// futuro NÃO altera este registro.
+
+model OrderAddress {
+  id      String @id @default(cuid())
+  orderId String @unique
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  recipientName String
+  zipCode       String
+  state         String
+  city          String
+  neighborhood  String
+  street        String
+  number        String
+  complement    String?
+  reference     String?
+  phone         String?
+
+  createdAt DateTime @default(now())
+}
+
+// --- Pagamento (1 pedido -> N tentativas) -------------------------------
+// Sem integração com gateway. NUNCA armazenar dados sensíveis de cartão.
+
+model Payment {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  method      PaymentMethod
+  status      PaymentStatus @default(PENDING)
+  amountCents Int
+
+  provider          String? // ex.: "mercadopago" — uso futuro
+  providerPaymentId String?
+  paidAt            DateTime?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([status])
+}
+
+// --- Entrega (1:1 com o pedido) ---------------------------------------
+// Endereço vem de OrderAddress (não duplicado). Sem logística nesta etapa.
+
+model Shipment {
+  id      String @id @default(cuid())
+  orderId String @unique
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  status       ShipmentStatus @default(PENDING)
+  carrier      String?
+  trackingCode String?
+  estimatedAt  DateTime? // data prevista
+  shippedAt    DateTime?
+  deliveredAt  DateTime? // data de entrega
+  notes        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+// --- Nota fiscal (preparação p/ NF-e — SEM emissão real / SEFAZ) --------
+
+model Invoice {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  status InvoiceStatus @default(PENDING)
+
+  number          String?
+  series          String?
+  accessKey       String? // chave de acesso (44 dígitos) — uso futuro
+  xml             String?   @db.Text
+  danfeUrl        String? // PDF/DANFE
+  issuedAt        DateTime?
+  authorizedAt    DateTime?
+  rejectionReason String?
+
+  canceledAt        DateTime?
+  cancelReason      String?
+  cancelProtocol    String?
+  cancelRequestedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([status])
+}
+
+// --- Movimentação de estoque (livro-razão) ---------------------------
+// Apenas modelagem. Sem baixa automática nem recálculo nesta etapa.
+
+model StockMovement {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  type     StockMovementType
+  reason   StockMovementReason @default(OTHER)
+  quantity Int // sempre positivo; `type` define o sentido
+
+  orderId String? // origem opcional: pedido que gerou a movimentação
+  order   Order?  @relation(fields: [orderId], references: [id])
+
+  userId String? // staff responsável (nulo em movimentações automáticas)
+  user   User?   @relation(fields: [userId], references: [id])
+
+  note String?
+
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+  @@index([orderId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// --- Histórico do pedido (audit trail leve) -------------------------
+// Um registro por transição de status do pedido ou do pagamento.
+
+model OrderEvent {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  type       OrderEventType
+  fromStatus String? // string livre: cobre OrderStatus ou PaymentStatus
+  toStatus   String?
+  note       String?
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([createdAt])
 }

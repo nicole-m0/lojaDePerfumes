@@ -142,14 +142,30 @@ export default function CartDrawer() {
                   <span className="text-xl font-bold text-venus-600">{formatPrice(totalPrice)}</span>
                 </div>
               </div>
-              <a
-                href={buildWhatsAppUrl(buildCartMessage(items, totalPrice))}
-                target="_blank"
-                rel="noopener noreferrer"
+              <Link
+                href="/checkout"
+                onClick={closeCart}
                 className="flex w-full items-center justify-center rounded-full bg-gradient-to-r from-venus-500 to-venus-600 py-3 text-sm font-bold text-white shadow-glow transition hover:brightness-110"
               >
-                Finalizar pedido no WhatsApp
-              </a>
+                Finalizar compra
+              </Link>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <Link
+                  href="/carrinho"
+                  onClick={closeCart}
+                  className="text-xs font-medium text-venus-700 underline-offset-2 hover:underline"
+                >
+                  Ver carrinho
+                </Link>
+                <a
+                  href={buildWhatsAppUrl(buildCartMessage(items, totalPrice))}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-venus-700 underline-offset-2 hover:underline"
+                >
+                  Finalizar no WhatsApp
+                </a>
+              </div>
             </div>
           </>
         )}

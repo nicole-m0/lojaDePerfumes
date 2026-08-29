@@ -30,6 +30,8 @@ export interface ProductFormValues {
   gradient: string
   specs: { label: string; value: string }[]
   images: ProductImageInput[]
+  /** Somente exibição — a gestão de estoque é uma fase posterior. */
+  stockOnHand?: number
 }
 
 interface ProductFormProps {
@@ -202,6 +204,16 @@ export default function ProductForm({
             className="mt-1.5"
           />
         </div>
+
+        {initialValues.id && (
+          <div className="sm:col-span-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+            <span className="text-muted-foreground">Estoque atual: </span>
+            <span className="font-medium">{initialValues.stockOnHand ?? 0} un.</span>
+            <span className="ml-2 text-xs text-muted-foreground">
+              (somente leitura — movimentação de estoque é uma fase posterior)
+            </span>
+          </div>
+        )}
       </div>
 
       <fieldset className="space-y-3 rounded-lg border p-4">

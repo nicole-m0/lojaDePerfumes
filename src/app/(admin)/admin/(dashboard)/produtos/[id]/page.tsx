@@ -45,6 +45,7 @@ export default async function EditProductPage({ params }: PageProps) {
     compareAtPriceReais: reaisString(product.compareAtPriceCents),
     status: product.status,
     featured: product.featured,
+    stockOnHand: product.stockOnHand,
     iconKey: product.iconKey ?? '',
     gradient: product.gradient ?? '',
     specs: product.specs.map((s) => ({ label: s.label, value: s.value })),
