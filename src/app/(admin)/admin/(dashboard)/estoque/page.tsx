@@ -23,7 +23,8 @@ export default async function StockPage() {
       <div>
         <h1 className="text-2xl font-bold">Estoque</h1>
         <p className="text-sm text-muted-foreground">
-          Saldo atual por produto (somente leitura). {lowCount > 0 && (
+          Saldo atual por produto — clique em um produto para ver o histórico e registrar
+          movimentações. {lowCount > 0 && (
             <span className="font-medium text-destructive">
               {lowCount} produto(s) com estoque zerado ou negativo.
             </span>
@@ -52,10 +53,7 @@ export default async function StockPage() {
             {products.map((p) => (
               <TableRow key={p.id}>
                 <TableCell>
-                  <Link
-                    href={`/admin/produtos/${p.id}`}
-                    className="font-medium hover:text-primary"
-                  >
+                  <Link href={`/admin/estoque/${p.id}`} className="font-medium hover:text-primary">
                     {p.name}
                   </Link>
                 </TableCell>
@@ -87,8 +85,8 @@ export default async function StockPage() {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Entradas, saídas, ajustes e baixa automática de estoque serão implementados em uma fase
-        posterior.
+        A baixa por venda acontece automaticamente na confirmação do pedido, e é devolvida
+        automaticamente em caso de cancelamento.
       </p>
     </div>
   )

@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma'
 import { reaisToCents } from '@/lib/format'
 import { slugify } from '@/lib/slug'
 import { requireStaff } from '@/server/guard'
+import { registerManualEntry } from '@/server/stock'
 
 export type ProductFormState = { error?: string; fieldErrors?: Record<string, string> }
 
@@ -36,6 +37,8 @@ const productSchema = z.object({
   gradient: z.string().optional(),
   specs: z.array(specSchema),
   images: z.array(imageSchema),
+  /** Só é aplicado na criação — edição de estoque passa pela tela /admin/estoque. */
+  initialStock: z.coerce.number().int().min(0).catch(0),
 })
 
 function parseJsonArray(value: FormDataEntryValue | null): unknown[] {
@@ -65,7 +68,7 @@ export async function saveProduct(
   _prev: ProductFormState,
   formData: FormData,
 ): Promise<ProductFormState> {
-  await requireStaff()
+  const staff = await requireStaff()
 
   const parsed = productSchema.safeParse({
     id: (formData.get('id') as string) || undefined,
@@ -82,6 +85,7 @@ export async function saveProduct(
     gradient: (formData.get('gradient') as string) || undefined,
     specs: parseJsonArray(formData.get('specs')),
     images: parseJsonArray(formData.get('images')),
+    initialStock: formData.get('initialStock'),
   })
 
   if (!parsed.success) {
@@ -110,6 +114,7 @@ export async function saveProduct(
     gradient: d.gradient || null,
   }
 
+  const isNew = !d.id
   const product = d.id
     ? await prisma.product.update({ where: { id: d.id }, data: scalar })
     : await prisma.product.create({ data: scalar })
@@ -135,6 +140,17 @@ export async function saveProduct(
       })),
     }),
   ])
+
+  // Estoque inicial só se aplica na criação — edição de estoque é sempre via /admin/estoque.
+  if (isNew && d.initialStock > 0) {
+    await registerManualEntry({
+      productId: product.id,
+      reason: 'PURCHASE',
+      quantity: d.initialStock,
+      note: 'Estoque inicial no cadastro do produto',
+      userId: staff.id,
+    })
+  }
 
   revalidatePath('/admin/produtos')
   revalidatePath('/')

@@ -30,7 +30,7 @@ export interface ProductFormValues {
   gradient: string
   specs: { label: string; value: string }[]
   images: ProductImageInput[]
-  /** Somente exibição — a gestão de estoque é uma fase posterior. */
+  /** Somente exibição na edição — ajustes passam por /admin/estoque. */
   stockOnHand?: number
 }
 
@@ -205,13 +205,33 @@ export default function ProductForm({
           />
         </div>
 
-        {initialValues.id && (
+        {initialValues.id ? (
           <div className="sm:col-span-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
             <span className="text-muted-foreground">Estoque atual: </span>
             <span className="font-medium">{initialValues.stockOnHand ?? 0} un.</span>
             <span className="ml-2 text-xs text-muted-foreground">
-              (somente leitura — movimentação de estoque é uma fase posterior)
+              (ajuste pela tela de{' '}
+              <Link href={`/admin/estoque/${initialValues.id}`} className="underline">
+                Estoque
+              </Link>
+              )
             </span>
+          </div>
+        ) : (
+          <div>
+            <Label htmlFor="initialStock">Estoque inicial</Label>
+            <Input
+              id="initialStock"
+              name="initialStock"
+              type="number"
+              min={0}
+              step={1}
+              defaultValue={0}
+              className="mt-1.5"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Se maior que zero, registra uma entrada de estoque ao criar o produto.
+            </p>
           </div>
         )}
       </div>

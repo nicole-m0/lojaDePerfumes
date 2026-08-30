@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getProductsForCart } from '@/server/catalog'
 import { computeOrderTotals } from '@/lib/order-pricing'
+import { findInsufficientStockItems } from '@/lib/stock'
 
 const MAX_QTY_PER_LINE = 99
 const NONCE_COOKIE = 'venus_checkout_nonce'
@@ -215,7 +216,14 @@ export async function createWebsiteOrder(
       const ids = [...new Set(d.items.map((i) => i.productId))]
       const products = await tx.product.findMany({
         where: { id: { in: ids }, status: 'ACTIVE' },
-        select: { id: true, name: true, slug: true, priceCents: true, images: { orderBy: { position: 'asc' }, take: 1, select: { url: true } } },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          priceCents: true,
+          stockOnHand: true,
+          images: { orderBy: { position: 'asc' }, take: 1, select: { url: true } },
+        },
       })
       const byId = new Map(products.map((p) => [p.id, p]))
 
@@ -223,6 +231,26 @@ export async function createWebsiteOrder(
       if (unavailable.length > 0) {
         throw new CheckoutError(
           'Um ou mais produtos do carrinho não estão mais disponíveis. Revise o carrinho.',
+        )
+      }
+
+      // Checagem de disponibilidade — só bloqueia, não decrementa. A baixa real
+      // acontece na confirmação do pedido (ver decrementStockForOrder).
+      const insufficient = findInsufficientStockItems(
+        d.items.map((i) => {
+          const p = byId.get(i.productId)!
+          return {
+            productId: p.id,
+            productName: p.name,
+            requestedQuantity: i.quantity,
+            availableQuantity: p.stockOnHand,
+          }
+        }),
+      )
+      if (insufficient.length > 0) {
+        const names = insufficient.map((i) => i.productName).join(', ')
+        throw new CheckoutError(
+          `Quantidade indisponível em estoque para: ${names}. Ajuste o carrinho e tente novamente.`,
         )
       }
 

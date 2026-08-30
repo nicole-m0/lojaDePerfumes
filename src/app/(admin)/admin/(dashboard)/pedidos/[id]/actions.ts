@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireStaff } from '@/server/guard'
 import { canCancel, canTransition, type OrderStatusValue } from '@/lib/order-status'
+import { decrementStockForOrder, restoreStockForOrder, InsufficientStockError } from '@/server/stock'
 
 export interface OrderActionState {
   error?: string
@@ -45,7 +46,14 @@ export async function updateOrderStatus(
 
   try {
     await prisma.$transaction(async (tx) => {
-      const order = await tx.order.findUnique({ where: { id: orderId }, select: { status: true } })
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        select: {
+          status: true,
+          number: true,
+          items: { select: { productId: true, productName: true, quantity: true } },
+        },
+      })
       if (!order) throw new ActionError('Pedido não encontrado.')
       const from = order.status as OrderStatusValue
 
@@ -53,6 +61,21 @@ export async function updateOrderStatus(
       if (from === toStatus) throw new ActionError('O pedido já está nesse status.')
       if (!canTransition(from, toStatus)) {
         throw new ActionError(`Transição não permitida: ${from} → ${toStatus}.`)
+      }
+
+      // Baixa de estoque acontece exatamente uma vez, na confirmação — nunca na criação
+      // do pedido nem em transições posteriores (PROCESSING/SHIPPED/DELIVERED só herdam).
+      if (from === 'PENDING' && toStatus === 'CONFIRMED') {
+        try {
+          await decrementStockForOrder(tx, order.items, { orderId, userId: staff.id })
+        } catch (err) {
+          if (err instanceof InsufficientStockError) {
+            throw new ActionError(
+              `Não é possível confirmar: estoque insuficiente para "${err.productName}".`,
+            )
+          }
+          throw err
+        }
       }
 
       await tx.order.update({ where: { id: orderId }, data: { status: toStatus } })
@@ -100,12 +123,29 @@ export async function cancelOrder(
 
   try {
     await prisma.$transaction(async (tx) => {
-      const order = await tx.order.findUnique({ where: { id: orderId }, select: { status: true } })
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        select: {
+          status: true,
+          number: true,
+          items: { select: { productId: true, productName: true, quantity: true } },
+        },
+      })
       if (!order) throw new ActionError('Pedido não encontrado.')
       const from = order.status as OrderStatusValue
 
       if (from === 'CANCELED') throw new ActionError('O pedido já está cancelado.')
       if (!canCancel(from)) throw new ActionError('Este pedido não pode mais ser cancelado.')
+
+      // Só devolve estoque se ele já tinha sido baixado (isto é, se o pedido já havia
+      // passado por CONFIRMED). Cancelar a partir de PENDING não mexe em estoque.
+      if (from !== 'PENDING') {
+        await restoreStockForOrder(tx, order.items, {
+          orderId,
+          orderNumber: order.number,
+          userId: staff.id,
+        })
+      }
 
       await tx.order.update({ where: { id: orderId }, data: { status: 'CANCELED' } })
       await tx.orderEvent.create({
