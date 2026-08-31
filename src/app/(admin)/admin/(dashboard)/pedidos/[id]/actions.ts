@@ -6,6 +6,12 @@ import { prisma } from '@/lib/prisma'
 import { requireStaff } from '@/server/guard'
 import { canCancel, canTransition, type OrderStatusValue } from '@/lib/order-status'
 import { decrementStockForOrder, restoreStockForOrder, InsufficientStockError } from '@/server/stock'
+import {
+  createManualPayment,
+  transitionPaymentStatus,
+  PaymentServiceError,
+} from '@/server/payments'
+import { reaisToCents } from '@/lib/format'
 
 export interface OrderActionState {
   error?: string
@@ -170,22 +176,17 @@ export async function cancelOrder(
 }
 
 // ---------------------------------------------------------------------------
-// Pagamento — altera SOMENTE o Payment existente + reflete em Order.paymentStatus
-// (não cria Payment, não mexe em Order.status, sem gateway)
+// Pagamento — delega a src/server/payments.ts (serviço centralizado).
+// Order.paymentStatus nunca é setado aqui: é sempre recalculado a partir dos
+// Payments do pedido dentro do serviço.
 // ---------------------------------------------------------------------------
 
-const paymentSchema = z.object({
+const paymentStatusSchema = z.object({
   orderId: z.string().min(1),
   paymentId: z.string().min(1),
-  toStatus: z.enum([
-    'PENDING',
-    'PAID',
-    'PARTIALLY_PAID',
-    'REFUNDED',
-    'CHARGEBACK',
-    'FAILED',
-    'CANCELED',
-  ]),
+  // PARTIALLY_PAID fica de fora de propósito: nunca é destino válido de transição
+  // manual de um Payment individual (ver src/lib/payment-status.ts).
+  toStatus: z.enum(['PENDING', 'PAID', 'FAILED', 'CANCELED', 'REFUNDED', 'CHARGEBACK']),
   note: z.string().trim().max(2000).optional(),
 })
 
@@ -194,7 +195,7 @@ export async function updatePaymentStatus(
   formData: FormData,
 ): Promise<OrderActionState> {
   const staff = await requireStaff()
-  const parsed = paymentSchema.safeParse({
+  const parsed = paymentStatusSchema.safeParse({
     orderId: formData.get('orderId'),
     paymentId: formData.get('paymentId'),
     toStatus: formData.get('toStatus'),
@@ -204,41 +205,66 @@ export async function updatePaymentStatus(
   const { orderId, paymentId, toStatus, note } = parsed.data
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const payment = await tx.payment.findUnique({
-        where: { id: paymentId },
-        select: { orderId: true, status: true, paidAt: true },
-      })
-      if (!payment || payment.orderId !== orderId) {
-        throw new ActionError('Pagamento não encontrado para este pedido.')
-      }
-      const from = payment.status
-      if (from === toStatus) throw new ActionError('O pagamento já está nesse status.')
-
-      await tx.payment.update({
-        where: { id: paymentId },
-        data: {
-          status: toStatus,
-          paidAt: toStatus === 'PAID' ? (payment.paidAt ?? new Date()) : payment.paidAt,
-        },
-      })
-      // Um pedido do site tem exatamente um Payment — Order.paymentStatus acompanha.
-      await tx.order.update({ where: { id: orderId }, data: { paymentStatus: toStatus } })
-      await tx.orderEvent.create({
-        data: {
-          orderId,
-          type: 'PAYMENT_STATUS_CHANGED',
-          fromStatus: from,
-          toStatus,
-          note: note || null,
-          userId: staff.id,
-        },
-      })
+    await transitionPaymentStatus({
+      orderId,
+      paymentId,
+      toStatus,
+      note: note || null,
+      staff,
     })
   } catch (err) {
-    if (err instanceof ActionError) return { error: err.message }
+    if (err instanceof PaymentServiceError) return { error: err.message }
     console.error('[updatePaymentStatus]', err)
     return { error: 'Não foi possível atualizar o pagamento.' }
+  }
+
+  revalidateOrder(orderId)
+  return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// Registro manual de um novo pagamento (suporta N Payments por pedido: parcial,
+// complementar, nova tentativa após falha etc.)
+// ---------------------------------------------------------------------------
+
+const createPaymentSchema = z.object({
+  orderId: z.string().min(1),
+  method: z.enum(['PIX', 'CREDIT_CARD', 'DEBIT_CARD', 'BOLETO', 'CASH', 'BANK_TRANSFER', 'OTHER']),
+  amount: z.string().trim().min(1, 'Informe o valor.'),
+  notes: z.string().trim().max(2000).optional(),
+})
+
+export async function createPayment(
+  _prev: OrderActionState,
+  formData: FormData,
+): Promise<OrderActionState> {
+  const staff = await requireStaff()
+  const parsed = createPaymentSchema.safeParse({
+    orderId: formData.get('orderId'),
+    method: formData.get('method'),
+    amount: formData.get('amount'),
+    notes: (formData.get('notes') as string) || undefined,
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' }
+  const { orderId, method, amount, notes } = parsed.data
+
+  const amountCents = reaisToCents(amount)
+  if (!Number.isFinite(amountCents) || amountCents <= 0) {
+    return { error: 'Valor inválido.' }
+  }
+
+  try {
+    await createManualPayment({
+      orderId,
+      method,
+      amountCents,
+      notes: notes || null,
+      staff,
+    })
+  } catch (err) {
+    if (err instanceof PaymentServiceError) return { error: err.message }
+    console.error('[createPayment]', err)
+    return { error: 'Não foi possível registrar o pagamento.' }
   }
 
   revalidateOrder(orderId)

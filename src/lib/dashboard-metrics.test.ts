@@ -18,6 +18,7 @@ function order(overrides: Partial<DashboardOrderInput>): DashboardOrderInput {
     totalCents: 1000,
     createdAt: FIXED_NOW,
     paymentMethod: null,
+    paidCents: 0,
     ...overrides,
   }
 }
@@ -41,19 +42,29 @@ describe('computeCountsByKey', () => {
 })
 
 describe('computeRevenueSummary', () => {
-  it('soma Order.totalCents só de pedidos PAID, nunca Payment.amountCents', () => {
+  it('soma o valor efetivamente pago (paidCents) de pedidos totalmente quitados', () => {
     const orders = [
-      order({ paymentStatus: 'PAID', totalCents: 5000 }),
-      order({ paymentStatus: 'PAID', totalCents: 3000 }),
-      order({ paymentStatus: 'PENDING', totalCents: 1000 }),
-      order({ paymentStatus: 'PARTIALLY_PAID', totalCents: 2000 }),
-      order({ paymentStatus: 'CANCELED', totalCents: 9999 }),
+      order({ paymentStatus: 'PAID', totalCents: 5000, paidCents: 5000 }),
+      order({ paymentStatus: 'PAID', totalCents: 3000, paidCents: 3000 }),
+      order({ paymentStatus: 'PENDING', totalCents: 1000, paidCents: 0 }),
+      order({ paymentStatus: 'PARTIALLY_PAID', totalCents: 2000, paidCents: 0 }),
+      order({ paymentStatus: 'CANCELED', totalCents: 9999, paidCents: 0 }),
     ]
     const summary = computeRevenueSummary(orders)
     expect(summary.paidTotalCents).toBe(8000)
     expect(summary.paidOrderCount).toBe(2)
     expect(summary.averageTicketCents).toBe(4000)
     expect(summary.pendingTotalCents).toBe(3000)
+  })
+
+  it('pedido PARTIALLY_PAID soma o valor já recebido em paidTotalCents e só o saldo em pendingTotalCents', () => {
+    // Pedido de R$ 20 com R$ 8 já pagos (múltiplos Payments, Parte 8): entram 800 centavos
+    // no faturamento recebido e só os 1200 restantes em "a receber" — nunca o total 2000.
+    const orders = [order({ paymentStatus: 'PARTIALLY_PAID', totalCents: 2000, paidCents: 800 })]
+    const summary = computeRevenueSummary(orders)
+    expect(summary.paidTotalCents).toBe(800)
+    expect(summary.paidOrderCount).toBe(0)
+    expect(summary.pendingTotalCents).toBe(1200)
   })
 
   it('não divide por zero quando não há pedido pago', () => {
@@ -82,11 +93,20 @@ describe('computeDailySeries', () => {
   it('bucketiza pedidos por dia, com todos os dias do intervalo presentes', () => {
     const range = resolveDateRange('today', FIXED_NOW)
     const orders = [
-      order({ createdAt: FIXED_NOW, paymentStatus: 'PAID', totalCents: 1000 }),
-      order({ createdAt: FIXED_NOW, paymentStatus: 'PENDING', totalCents: 500 }),
+      order({ createdAt: FIXED_NOW, paymentStatus: 'PAID', totalCents: 1000, paidCents: 1000 }),
+      order({ createdAt: FIXED_NOW, paymentStatus: 'PENDING', totalCents: 500, paidCents: 0 }),
     ]
     const series = computeDailySeries(orders, range)
     expect(series).toEqual([{ date: '2026-08-30', orders: 2, paidRevenueCents: 1000 }])
+  })
+
+  it('soma pagamentos parciais no dia, não só pedidos totalmente pagos', () => {
+    const range = resolveDateRange('today', FIXED_NOW)
+    const orders = [
+      order({ createdAt: FIXED_NOW, paymentStatus: 'PARTIALLY_PAID', totalCents: 2000, paidCents: 700 }),
+    ]
+    const series = computeDailySeries(orders, range)
+    expect(series[0].paidRevenueCents).toBe(700)
   })
 
   it('inclui dias sem nenhum pedido como zero', () => {

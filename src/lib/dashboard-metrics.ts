@@ -11,6 +11,8 @@ export interface DashboardOrderInput {
   createdAt: Date
   /** Método do primeiro pagamento do pedido, se houver — nunca soma valor por método (ver computeRevenueSummary). */
   paymentMethod: string | null
+  /** Soma dos Payments com status PAID deste pedido (Parte 8: um pedido pode ter N Payments). */
+  paidCents: number
 }
 
 export function computeCountsByKey(
@@ -34,26 +36,32 @@ export interface RevenueSummary {
   pendingTotalCents: number
 }
 
-// Soma SEMPRE Order.totalCents (nunca Payment.amountCents) — cada Order entra uma única vez
-// no total, então múltiplos Payment futuros por pedido não podem duplicar receita aqui.
+// paidTotalCents soma SEMPRE order.paidCents (valor efetivamente pago via Payment.status
+// PAID, já agregado por pedido em src/server/dashboard.ts) — nunca Order.totalCents de
+// pedidos PAID, pois isso subestimaria o recebido em pedidos PARTIALLY_PAID quando há
+// múltiplos Payments por pedido (Parte 8). averageTicketCents usa só pedidos totalmente
+// quitados (paymentStatus PAID), para não distorcer o ticket médio com recebimentos parciais.
 export function computeRevenueSummary(orders: DashboardOrderInput[]): RevenueSummary {
   let paidTotalCents = 0
+  let fullyPaidCents = 0
   let paidOrderCount = 0
   let pendingTotalCents = 0
 
   for (const order of orders) {
+    paidTotalCents += order.paidCents
+
     if (order.paymentStatus === 'PAID') {
-      paidTotalCents += order.totalCents
+      fullyPaidCents += order.totalCents
       paidOrderCount += 1
     } else if (order.paymentStatus === 'PENDING' || order.paymentStatus === 'PARTIALLY_PAID') {
-      pendingTotalCents += order.totalCents
+      pendingTotalCents += order.totalCents - order.paidCents
     }
   }
 
   return {
     paidTotalCents,
     paidOrderCount,
-    averageTicketCents: paidOrderCount > 0 ? Math.round(paidTotalCents / paidOrderCount) : 0,
+    averageTicketCents: paidOrderCount > 0 ? Math.round(fullyPaidCents / paidOrderCount) : 0,
     pendingTotalCents,
   }
 }
@@ -89,7 +97,9 @@ export function computeDailySeries(orders: DashboardOrderInput[], range: DateRan
     const bucket = byDay.get(key)
     if (!bucket) continue // fora do intervalo enumerado (não deveria ocorrer, dado o filtro na query)
     bucket.orders += 1
-    if (order.paymentStatus === 'PAID') bucket.paidRevenueCents += order.totalCents
+    // paidCents já é 0 para pedidos sem nenhum Payment PAID — soma o valor efetivamente
+    // recebido no dia, incluindo pagamentos parciais (consistente com computeRevenueSummary).
+    bucket.paidRevenueCents += order.paidCents
   }
 
   return [...byDay.values()]

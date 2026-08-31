@@ -193,22 +193,19 @@ export default async function OrderDetailPage({ params }: PageProps) {
           <CardHeader>
             <CardTitle className="text-base">Pagamento</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {order.payments.length === 0 && (
-              <p className="text-sm text-muted-foreground">Nenhum pagamento registrado.</p>
-            )}
-            {order.payments.map((p) => (
-              <PaymentControl
-                key={p.id}
-                orderId={order.id}
-                payment={{
-                  id: p.id,
-                  method: p.method,
-                  amountCents: p.amountCents,
-                  status: p.status,
-                }}
-              />
-            ))}
+          <CardContent>
+            <PaymentControl
+              orderId={order.id}
+              orderTotalCents={order.totalCents}
+              payments={order.payments.map((p) => ({
+                id: p.id,
+                method: p.method,
+                amountCents: p.amountCents,
+                status: p.status,
+                paidAt: p.paidAt,
+                createdAt: p.createdAt,
+              }))}
+            />
           </CardContent>
         </Card>
 

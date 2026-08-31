@@ -46,7 +46,13 @@ export async function getDashboardMetrics(preset: PeriodPreset): Promise<Dashboa
         paymentStatus: true,
         totalCents: true,
         createdAt: true,
-        payments: { orderBy: { createdAt: 'asc' }, take: 1, select: { method: true } },
+        // Sem `take: 1`: precisamos de todos os Payments para somar o valor efetivamente
+        // pago (Parte 8 — um pedido pode ter N Payments). Ordenado por createdAt para que
+        // `payments[0]` continue sendo o "primeiro pagamento" usado em paymentMethod.
+        payments: {
+          orderBy: { createdAt: 'asc' },
+          select: { method: true, status: true, amountCents: true },
+        },
       },
     }),
     prisma.product.findMany({ select: { id: true, name: true, stockOnHand: true } }),
@@ -59,6 +65,9 @@ export async function getDashboardMetrics(preset: PeriodPreset): Promise<Dashboa
     totalCents: order.totalCents,
     createdAt: order.createdAt,
     paymentMethod: order.payments[0]?.method ?? null,
+    paidCents: order.payments
+      .filter((p) => p.status === 'PAID')
+      .reduce((sum, p) => sum + p.amountCents, 0),
   }))
 
   const byStatus = computeCountsByKey(normalized, 'status')
