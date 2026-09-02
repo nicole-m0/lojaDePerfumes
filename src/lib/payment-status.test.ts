@@ -48,11 +48,41 @@ describe('summarizePayments', () => {
     const summary = summarizePayments([{ status: 'PENDING', amountCents: 1000 }], 1000)
     expect(summary).toEqual({
       paidCents: 0,
+      pendingCents: 1000,
       refundedCents: 0,
       chargebackCents: 0,
       remainingCents: 1000,
+      availableToRegisterCents: 0,
       status: 'PENDING',
     })
+  })
+
+  it('pendingCents soma só os PENDING; availableToRegisterCents = total - pago - pendente', () => {
+    const summary = summarizePayments(
+      [
+        { status: 'PAID', amountCents: 300 },
+        { status: 'PENDING', amountCents: 200 },
+        { status: 'PENDING', amountCents: 100 },
+        { status: 'FAILED', amountCents: 900 },
+      ],
+      1000,
+    )
+    expect(summary.paidCents).toBe(300)
+    expect(summary.pendingCents).toBe(300)
+    expect(summary.remainingCents).toBe(700) // o pedido ainda deve 700 (total - pago)
+    expect(summary.availableToRegisterCents).toBe(400) // 1000 - 300 pago - 300 pendente
+  })
+
+  it('availableToRegisterCents nunca fica negativo quando pendências passam do total', () => {
+    const summary = summarizePayments(
+      [
+        { status: 'PAID', amountCents: 600 },
+        { status: 'PENDING', amountCents: 800 },
+      ],
+      1000,
+    )
+    expect(summary.availableToRegisterCents).toBe(0)
+    expect(summary.remainingCents).toBe(400)
   })
 
   it('pagamento falhado/cancelado sem valor pago → PENDING', () => {

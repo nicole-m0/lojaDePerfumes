@@ -9,14 +9,13 @@
 //    individual (um pagamento isolado está pago ou não está; "parcial" é propriedade do
 //    pedido, que pode ter vários Payments).
 
-export type PaymentStatusValue =
-  | 'PENDING'
-  | 'PAID'
-  | 'PARTIALLY_PAID'
-  | 'REFUNDED'
-  | 'CHARGEBACK'
-  | 'FAILED'
-  | 'CANCELED'
+import type { PaymentStatus } from '@prisma/client'
+
+// Fonte única da verdade = enum `PaymentStatus` do schema Prisma. `import type` é apagado
+// na compilação, então isto NÃO puxa o client do Prisma para o bundle do navegador (este
+// módulo é usado também por componentes client). Se o enum mudar no schema, os `Record<
+// PaymentStatusValue, …>` abaixo passam a não compilar — o drift vira erro de tipo.
+export type PaymentStatusValue = PaymentStatus
 
 export const PAYMENT_STATUS_LABEL: Record<PaymentStatusValue, string> = {
   PENDING: 'Pendente',
@@ -66,10 +65,17 @@ export interface PaymentForSync {
 export interface PaymentSummary {
   /** Soma dos Payments atualmente PAID — "quanto já foi pago" (nunca conta REFUNDED/CHARGEBACK). */
   paidCents: number
+  /** Soma dos Payments atualmente PENDING — registrados mas ainda não confirmados. */
+  pendingCents: number
   refundedCents: number
   chargebackCents: number
-  /** orderTotalCents - paidCents, nunca negativo. */
+  /** orderTotalCents - paidCents, nunca negativo. "Quanto o pedido ainda deve." */
   remainingCents: number
+  /**
+   * orderTotalCents - paidCents - pendingCents, nunca negativo. "Quanto ainda dá para
+   * REGISTRAR" — impede acumular Payments PENDING que somados passem do total do pedido.
+   */
+  availableToRegisterCents: number
   /** Order.paymentStatus sincronizado a partir dos Payments. */
   status: PaymentStatusValue
 }
@@ -85,11 +91,13 @@ export function summarizePayments(
   orderTotalCents: number,
 ): PaymentSummary {
   let paidCents = 0
+  let pendingCents = 0
   let refundedCents = 0
   let chargebackCents = 0
 
   for (const p of payments) {
     if (p.status === 'PAID') paidCents += p.amountCents
+    else if (p.status === 'PENDING') pendingCents += p.amountCents
     else if (p.status === 'REFUNDED') refundedCents += p.amountCents
     else if (p.status === 'CHARGEBACK') chargebackCents += p.amountCents
   }
@@ -98,6 +106,7 @@ export function summarizePayments(
   // estornado/chargeback — usado para distinguir "nunca foi pago" de "foi pago e revertido".
   const everCollectedCents = paidCents + refundedCents + chargebackCents
   const remainingCents = Math.max(orderTotalCents - paidCents, 0)
+  const availableToRegisterCents = Math.max(orderTotalCents - paidCents - pendingCents, 0)
 
   let status: PaymentStatusValue
   if (chargebackCents > 0 && paidCents === 0 && everCollectedCents >= orderTotalCents) {
@@ -117,5 +126,13 @@ export function summarizePayments(
     status = 'PENDING'
   }
 
-  return { paidCents, refundedCents, chargebackCents, remainingCents, status }
+  return {
+    paidCents,
+    pendingCents,
+    refundedCents,
+    chargebackCents,
+    remainingCents,
+    availableToRegisterCents,
+    status,
+  }
 }

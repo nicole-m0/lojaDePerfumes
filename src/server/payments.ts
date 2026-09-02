@@ -22,6 +22,22 @@ interface PaymentRow {
   paidAt: Date | null
 }
 
+/**
+ * Lock pessimista da linha do Order (`SELECT … FOR UPDATE`) — serializa TODA mutação de
+ * pagamento do mesmo pedido. Sob READ COMMITTED (padrão do PostgreSQL) uma segunda
+ * transação concorrente bloqueia aqui até a primeira commitar e, ao destravar, relê o
+ * estado já atualizado dos Payments. Sem isto, duas confirmações simultâneas poderiam
+ * ler o mesmo saldo "antigo" e cada uma marcar PAID, ultrapassando Order.totalCents.
+ *
+ * Precisa ser a PRIMEIRA operação da transação, antes de qualquer leitura de Payment.
+ */
+async function lockOrder(tx: Tx, orderId: string): Promise<void> {
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE
+  `
+  if (rows.length === 0) throw new PaymentServiceError('Pedido não encontrado.')
+}
+
 async function loadOrderWithPayments(tx: Tx, orderId: string) {
   const order = await tx.order.findUnique({
     where: { id: orderId },
@@ -74,12 +90,19 @@ export async function createManualPayment(input: CreatePaymentInput) {
   }
 
   return prisma.$transaction(async (tx) => {
+    await lockOrder(tx, input.orderId)
     const order = await loadOrderWithPayments(tx, input.orderId)
     const summary = summarizePayments(order.payments, order.totalCents)
 
-    if (input.amountCents > summary.remainingCents) {
+    // Barra overpayment contando o que já está PAGO **e** o que já está PENDENTE: a soma
+    // de todos os Payments registrados nunca pode passar de Order.totalCents. Isso evita
+    // acumular pendências "fantasma" que jamais poderiam ser confirmadas. Para registrar
+    // um valor novo, um Payment pendente anterior precisa ser cancelado / marcado falho.
+    if (input.amountCents > summary.availableToRegisterCents) {
       throw new PaymentServiceError(
-        `Valor maior que o saldo restante do pedido (restam ${summary.remainingCents} centavos).`,
+        `Valor maior que o saldo ainda não coberto por pagamentos registrados ` +
+          `(${summary.availableToRegisterCents} centavos). Cancele ou marque como falho um ` +
+          `pagamento pendente antes de registrar outro.`,
       )
     }
 
@@ -96,7 +119,12 @@ export async function createManualPayment(input: CreatePaymentInput) {
     await tx.orderEvent.create({
       data: {
         orderId: input.orderId,
+        // OrderEventType do schema atual = ORDER_STATUS_CHANGED | PAYMENT_STATUS_CHANGED | NOTE.
+        // "Pagamento criado" é um Payment entrando no estado PENDING: PAYMENT_STATUS_CHANGED
+        // com fromStatus=null é a representação correta — não se cria um novo valor de enum
+        // só para isto (seria migração de schema sem ganho real de auditoria).
         type: 'PAYMENT_STATUS_CHANGED',
+        fromStatus: null,
         toStatus: 'PENDING',
         note: `Pagamento registrado manualmente (${input.method}, ${input.amountCents} centavos).`,
         userId: input.staff.id,
@@ -137,6 +165,7 @@ export interface TransitionPaymentStatusInput {
  */
 export async function transitionPaymentStatus(input: TransitionPaymentStatusInput) {
   return prisma.$transaction(async (tx) => {
+    await lockOrder(tx, input.orderId)
     const order = await loadOrderWithPayments(tx, input.orderId)
     const payment = order.payments.find((p) => p.id === input.paymentId)
     if (!payment) {
@@ -154,7 +183,9 @@ export async function transitionPaymentStatus(input: TransitionPaymentStatusInpu
     }
 
     // Overpayment: revalida contra o estado atual de TODOS os pagamentos do pedido dentro
-    // da transação — outro Payment pode ter sido marcado PAID entre a tela carregar e o submit.
+    // da transação. O `lockOrder` acima garante que esta releitura já enxerga qualquer
+    // outro Payment marcado PAID por uma transação concorrente (ela commitou antes de nós
+    // conseguirmos o lock) — sem o lock, duas confirmações simultâneas passariam as duas.
     if (input.toStatus === 'PAID') {
       const others = order.payments.filter((p) => p.id !== input.paymentId)
       const summaryWithoutThis = summarizePayments(others, order.totalCents)

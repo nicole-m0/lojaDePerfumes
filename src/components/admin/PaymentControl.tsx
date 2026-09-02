@@ -36,7 +36,14 @@ const METHOD_LABEL: Record<string, string> = Object.fromEntries(
 const selectClass =
   'mt-1.5 h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]'
 
-const dateFmt = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+// `timeZone` fixo: este é um componente client (renderiza no SSR e re-renderiza na
+// hidratação). Sem fixar o fuso, o servidor formataria no fuso da máquina e o navegador
+// no fuso do usuário — strings diferentes = hydration mismatch. A loja opera em BRT.
+const dateFmt = new Intl.DateTimeFormat('pt-BR', {
+  dateStyle: 'short',
+  timeStyle: 'short',
+  timeZone: 'America/Sao_Paulo',
+})
 
 export interface PaymentRowValue {
   id: string
@@ -106,12 +113,18 @@ function PaymentRow({ orderId, payment }: { orderId: string; payment: PaymentRow
   )
 }
 
-function AddPaymentForm({ orderId, remainingCents }: { orderId: string; remainingCents: number }) {
+function AddPaymentForm({
+  orderId,
+  availableToRegisterCents,
+}: {
+  orderId: string
+  availableToRegisterCents: number
+}) {
   const [state, formAction, isPending] = useActionState<OrderActionState, FormData>(
     createPayment,
     {},
   )
-  const closed = remainingCents <= 0
+  const closed = availableToRegisterCents <= 0
 
   return (
     <form action={formAction} className="space-y-3 border-t pt-3">
@@ -150,12 +163,17 @@ function AddPaymentForm({ orderId, remainingCents }: { orderId: string; remainin
         />
       </div>
       <p className="text-xs text-muted-foreground">
-        Saldo restante: <span className="tabular-nums">{formatCents(remainingCents)}</span>. Não é
-        possível registrar valor maior que o saldo. Registro manual — nenhum pagamento é
+        Disponível para registrar:{' '}
+        <span className="tabular-nums">{formatCents(availableToRegisterCents)}</span> (total do
+        pedido menos o que já está pago ou pendente). Registro manual — nenhum pagamento é
         processado.
       </p>
       <Button type="submit" size="sm" disabled={isPending || closed}>
-        {closed ? 'Pedido já quitado' : isPending ? 'Salvando...' : 'Registrar pagamento'}
+        {closed
+          ? 'Sem saldo a registrar'
+          : isPending
+            ? 'Salvando...'
+            : 'Registrar pagamento'}
       </Button>
       {state.error && (
         <p className="text-destructive" role="alert">
@@ -191,6 +209,12 @@ export default function PaymentControl({
           <dt className="text-xs text-muted-foreground">Saldo restante</dt>
           <dd className="tabular-nums font-medium">{formatCents(summary.remainingCents)}</dd>
         </div>
+        {summary.pendingCents > 0 && (
+          <div>
+            <dt className="text-xs text-muted-foreground">Pendente de confirmação</dt>
+            <dd className="tabular-nums font-medium">{formatCents(summary.pendingCents)}</dd>
+          </div>
+        )}
       </dl>
       {summary.status === 'PARTIALLY_PAID' && (
         <p className="text-xs text-amber-600">
@@ -208,7 +232,10 @@ export default function PaymentControl({
         </div>
       )}
 
-      <AddPaymentForm orderId={orderId} remainingCents={summary.remainingCents} />
+      <AddPaymentForm
+        orderId={orderId}
+        availableToRegisterCents={summary.availableToRegisterCents}
+      />
     </div>
   )
 }
