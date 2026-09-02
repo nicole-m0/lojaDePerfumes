@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   canTransition,
   isTerminalPaymentStatus,
+  mapMercadoPagoStatus,
   nextStatuses,
   summarizePayments,
 } from './payment-status'
@@ -162,5 +163,51 @@ describe('summarizePayments', () => {
     const summary = summarizePayments([], 1000)
     expect(summary.status).toBe('PENDING')
     expect(summary.remainingCents).toBe(1000)
+  })
+})
+
+describe('mapMercadoPagoStatus', () => {
+  it('approved → PAID', () => {
+    expect(mapMercadoPagoStatus('approved')).toBe('PAID')
+  })
+
+  it('pending → PENDING', () => {
+    expect(mapMercadoPagoStatus('pending')).toBe('PENDING')
+  })
+
+  it('in_process → PENDING', () => {
+    expect(mapMercadoPagoStatus('in_process')).toBe('PENDING')
+  })
+
+  it('rejected → FAILED', () => {
+    expect(mapMercadoPagoStatus('rejected')).toBe('FAILED')
+  })
+
+  it('cancelled → FAILED', () => {
+    expect(mapMercadoPagoStatus('cancelled')).toBe('FAILED')
+  })
+
+  it('refunded → REFUNDED', () => {
+    expect(mapMercadoPagoStatus('refunded')).toBe('REFUNDED')
+  })
+
+  it('charged_back → CHARGEBACK', () => {
+    expect(mapMercadoPagoStatus('charged_back')).toBe('CHARGEBACK')
+  })
+
+  it('status desconhecido → null (não causa mudança interna)', () => {
+    expect(mapMercadoPagoStatus('in_mediation')).toBeNull()
+    expect(mapMercadoPagoStatus('authorized')).toBeNull()
+    expect(mapMercadoPagoStatus('')).toBeNull()
+    expect(mapMercadoPagoStatus('qualquer_coisa_futura')).toBeNull()
+  })
+
+  it('todo status mapeado devolve um PaymentStatusValue que o domínio conhece', () => {
+    const known = new Set(['PENDING', 'PAID', 'PARTIALLY_PAID', 'REFUNDED', 'CHARGEBACK', 'FAILED', 'CANCELED'])
+    for (const mp of ['approved', 'pending', 'in_process', 'rejected', 'cancelled', 'refunded', 'charged_back']) {
+      const mapped = mapMercadoPagoStatus(mp)
+      expect(mapped).not.toBeNull()
+      expect(known.has(mapped as string)).toBe(true)
+    }
   })
 })

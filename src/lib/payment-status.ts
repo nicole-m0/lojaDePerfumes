@@ -136,3 +136,37 @@ export function summarizePayments(
     status,
   }
 }
+
+// ---------------------------------------------------------------------------
+// Mercado Pago (Fase 4) — tradução do status do gateway para o nosso domínio.
+//
+// Isto NÃO é uma segunda máquina de estados: apenas converte o `status` cru de um
+// pagamento do Mercado Pago para um `PaymentStatusValue` que já existe. Se a transição
+// desse estado atual para o estado traduzido é ou não permitida continua sendo decidido
+// por `canTransition` dentro de `src/server/payments.ts`. Status não previstos (ex.:
+// `in_mediation`, valores futuros) retornam `null` — o chamador registra o evento e
+// NÃO altera nenhum estado interno.
+// ---------------------------------------------------------------------------
+
+/**
+ * Converte `payment.status` da API do Mercado Pago no nosso `PaymentStatusValue`.
+ * Função pura, sem I/O. Retorna `null` para qualquer status desconhecido/não mapeado.
+ */
+export function mapMercadoPagoStatus(mpStatus: string): PaymentStatusValue | null {
+  switch (mpStatus) {
+    case 'approved':
+      return 'PAID'
+    case 'pending':
+    case 'in_process':
+      return 'PENDING'
+    case 'rejected':
+    case 'cancelled':
+      return 'FAILED'
+    case 'refunded':
+      return 'REFUNDED'
+    case 'charged_back':
+      return 'CHARGEBACK'
+    default:
+      return null
+  }
+}
