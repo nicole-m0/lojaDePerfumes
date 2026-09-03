@@ -21,6 +21,7 @@ export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
       <CheckoutSuccess
         orderNumber={order?.number ?? number}
         totalCents={order?.totalCents ?? null}
+        paymentStatus={order?.paymentStatus ?? null}
         found={Boolean(order)}
       />
     </main>

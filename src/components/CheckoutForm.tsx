@@ -16,12 +16,6 @@ const inputClass =
   'mt-1 w-full rounded-lg border border-venus-100 bg-white px-3 py-2 text-sm text-neutral-800 outline-none transition focus:border-venus-300 focus:ring-2 focus:ring-venus-200'
 const labelClass = 'text-xs font-medium text-neutral-600'
 
-const PAYMENT_OPTIONS = [
-  { value: 'PIX', label: 'PIX' },
-  { value: 'BOLETO', label: 'Boleto' },
-  { value: 'OTHER', label: 'Combinar depois' },
-] as const
-
 export default function CheckoutForm({ nonce }: { nonce: string }) {
   const { items } = useCart()
   const [state, formAction, isPending] = useActionState<CheckoutFormState, FormData>(
@@ -100,25 +94,10 @@ export default function CheckoutForm({ nonce }: { nonce: string }) {
 
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-neutral-800">Pagamento</h2>
-          <div className="flex flex-wrap gap-2">
-            {PAYMENT_OPTIONS.map((opt, idx) => (
-              <label
-                key={opt.value}
-                className="flex cursor-pointer items-center gap-2 rounded-lg border border-venus-100 px-3 py-2 text-sm has-[:checked]:border-venus-400 has-[:checked]:bg-venus-50"
-              >
-                <input
-                  type="radio"
-                  name="paymentMethod"
-                  value={opt.value}
-                  defaultChecked={idx === 0}
-                  className="accent-venus-600"
-                />
-                {opt.label}
-              </label>
-            ))}
-          </div>
-          <p className="text-xs text-neutral-400">
-            O pagamento é combinado após a confirmação — nenhuma cobrança é feita agora.
+          <p className="rounded-lg border border-venus-100 bg-venus-50/60 px-3 py-2.5 text-sm text-neutral-600">
+            Ao concluir o pedido você será levado ao ambiente seguro do{' '}
+            <span className="font-semibold">Mercado Pago</span> para pagar com PIX, cartão ou
+            boleto. A confirmação é feita automaticamente assim que o pagamento é aprovado.
           </p>
         </section>
       </div>

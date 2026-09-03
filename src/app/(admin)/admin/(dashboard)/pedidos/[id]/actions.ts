@@ -11,6 +11,8 @@ import {
   transitionPaymentStatus,
   PaymentServiceError,
 } from '@/server/payments'
+import { isMercadoPagoConfigured } from '@/lib/mercadopago'
+import { reconcileOrderWithMercadoPago } from '@/server/mercadopago'
 import { reaisToCents } from '@/lib/format'
 
 export interface OrderActionState {
@@ -269,6 +271,47 @@ export async function createPayment(
 
   revalidateOrder(orderId)
   return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// Reconsulta no Mercado Pago — para quando o webhook não chegou.
+// Busca os pagamentos do gateway vinculados ao pedido (external_reference) e
+// reaplica cada um pelo MESMO fluxo central. Idempotente. Estorno/chargeback
+// continuam exigindo ação manual do OWNER (aqui apenas ficam sinalizados).
+// ---------------------------------------------------------------------------
+
+const reconsultSchema = z.object({ orderId: z.string().min(1) })
+
+export async function reconsultMercadoPagoPayment(
+  _prev: OrderActionState,
+  formData: FormData,
+): Promise<OrderActionState> {
+  await requireStaff()
+  const parsed = reconsultSchema.safeParse({ orderId: formData.get('orderId') })
+  if (!parsed.success) return { error: 'Dados inválidos.' }
+  const { orderId } = parsed.data
+
+  if (!isMercadoPagoConfigured()) {
+    return { error: 'Mercado Pago não está configurado neste ambiente.' }
+  }
+
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { id: true },
+    })
+    if (!order) return { error: 'Pedido não encontrado.' }
+
+    const { found } = await reconcileOrderWithMercadoPago(orderId)
+    revalidateOrder(orderId)
+    if (found === 0) {
+      return { error: 'Nenhum pagamento encontrado no Mercado Pago para este pedido.' }
+    }
+    return { ok: true }
+  } catch (err) {
+    console.error('[reconsultMercadoPagoPayment]', err)
+    return { error: 'Não foi possível reconsultar o Mercado Pago agora.' }
+  }
 }
 
 // ---------------------------------------------------------------------------

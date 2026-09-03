@@ -9,13 +9,14 @@
 //    individual (um pagamento isolado está pago ou não está; "parcial" é propriedade do
 //    pedido, que pode ter vários Payments).
 
-import type { PaymentStatus } from '@prisma/client'
+import type { PaymentStatus, PaymentMethod } from '@prisma/client'
 
 // Fonte única da verdade = enum `PaymentStatus` do schema Prisma. `import type` é apagado
 // na compilação, então isto NÃO puxa o client do Prisma para o bundle do navegador (este
 // módulo é usado também por componentes client). Se o enum mudar no schema, os `Record<
 // PaymentStatusValue, …>` abaixo passam a não compilar — o drift vira erro de tipo.
 export type PaymentStatusValue = PaymentStatus
+export type PaymentMethodValue = PaymentMethod
 
 export const PAYMENT_STATUS_LABEL: Record<PaymentStatusValue, string> = {
   PENDING: 'Pendente',
@@ -168,5 +169,33 @@ export function mapMercadoPagoStatus(mpStatus: string): PaymentStatusValue | nul
       return 'CHARGEBACK'
     default:
       return null
+  }
+}
+
+/**
+ * Deriva o nosso `PaymentMethod` a partir dos campos `payment_type_id` /
+ * `payment_method_id` de um pagamento do Mercado Pago. Função pura.
+ * PIX é reconhecido pelo `payment_method_id === 'pix'` (o `payment_type_id`
+ * do PIX costuma vir como `bank_transfer`). Qualquer coisa não prevista cai em
+ * `OTHER` — nunca lança.
+ */
+export function mapMercadoPagoMethod(
+  paymentTypeId: string | null | undefined,
+  paymentMethodId?: string | null | undefined,
+): PaymentMethodValue {
+  if (paymentMethodId === 'pix') return 'PIX'
+  switch (paymentTypeId) {
+    case 'credit_card':
+      return 'CREDIT_CARD'
+    case 'debit_card':
+      return 'DEBIT_CARD'
+    case 'ticket':
+      return 'BOLETO'
+    case 'bank_transfer':
+      return 'PIX'
+    case 'account_money':
+      return 'BANK_TRANSFER'
+    default:
+      return 'OTHER'
   }
 }

@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ChevronLeft } from 'lucide-react'
 import { getAdminOrder } from '@/server/orders'
+import { requireStaff } from '@/server/guard'
+import { isMercadoPagoConfigured } from '@/lib/mercadopago'
 import { formatCents } from '@/lib/format'
 import type { OrderStatusValue } from '@/lib/order-status'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -37,8 +39,10 @@ const fmtDate = (d: Date | null | undefined) => (d ? dateFmt.format(d) : '—')
 
 export default async function OrderDetailPage({ params }: PageProps) {
   const { id } = await params
-  const order = await getAdminOrder(id)
+  const [order, staff] = await Promise.all([getAdminOrder(id), requireStaff()])
   if (!order) notFound()
+  const canReverse = staff.role === 'OWNER'
+  const mercadoPagoEnabled = isMercadoPagoConfigured()
 
   return (
     <div className="space-y-6">
@@ -197,6 +201,8 @@ export default async function OrderDetailPage({ params }: PageProps) {
             <PaymentControl
               orderId={order.id}
               orderTotalCents={order.totalCents}
+              canReverse={canReverse}
+              mercadoPagoEnabled={mercadoPagoEnabled}
               payments={order.payments.map((p) => ({
                 id: p.id,
                 method: p.method,

@@ -15,143 +15,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // for removido de payments.ts, os testes de concorrência abaixo passam a falhar.
 // ---------------------------------------------------------------------------
 
+import { makeFakePrisma, type FakePrisma, type Row } from '@/test/fake-prisma'
+
 vi.mock('server-only', () => ({}))
-
-interface Row {
-  [k: string]: unknown
-}
-
-function makeFakePrisma() {
-  const orders: Row[] = []
-  const payments: Row[] = []
-  const orderEvents: Row[] = []
-  let seq = 0
-  const nid = (p: string) => `${p}_${++seq}`
-
-  // Mutex global — modela o lock de linha do Order (`FOR UPDATE`).
-  let lockHolder: Promise<void> | null = null
-
-  function makeTx() {
-    const undo: (() => void)[] = []
-    let release: (() => void) | null = null
-
-    return {
-      async $queryRaw(strings: TemplateStringsArray, ...values: unknown[]) {
-        const sql = strings.join('?')
-        if (/for update/i.test(sql)) {
-          while (lockHolder) await lockHolder
-          lockHolder = new Promise<void>((resolve) => {
-            release = () => {
-              lockHolder = null
-              release = null
-              resolve()
-            }
-          })
-        }
-        const orderId = values[0]
-        return orders.some((o) => o.id === orderId) ? [{ id: orderId }] : []
-      },
-      order: {
-        async findUnique({ where, select }: { where: { id: string }; select?: Row }) {
-          const o = orders.find((x) => x.id === where.id)
-          if (!o) return null
-          const r: Row = { ...o }
-          if (select?.payments) {
-            r.payments = payments.filter((p) => p.orderId === o.id).map((p) => ({ ...p }))
-          }
-          return r
-        },
-        async update({ where, data }: { where: { id: string }; data: Row }) {
-          const o = orders.find((x) => x.id === where.id)
-          if (!o) throw new Error('order not found')
-          const prev = { ...o }
-          Object.assign(o, data)
-          undo.push(() => Object.assign(o, prev))
-          return { ...o }
-        },
-      },
-      payment: {
-        async create({ data }: { data: Row }) {
-          const row: Row = { id: nid('pay'), paidAt: null, createdAt: new Date(), notes: null, ...data }
-          payments.push(row)
-          undo.push(() => {
-            const i = payments.indexOf(row)
-            if (i >= 0) payments.splice(i, 1)
-          })
-          return { ...row }
-        },
-        async update({ where, data }: { where: { id: string }; data: Row }) {
-          const p = payments.find((x) => x.id === where.id)
-          if (!p) throw new Error('payment not found')
-          const prev = { ...p }
-          Object.assign(p, data)
-          undo.push(() => Object.assign(p, prev))
-          return { ...p }
-        },
-      },
-      orderEvent: {
-        async create({ data }: { data: Row }) {
-          const row: Row = {
-            id: nid('evt'),
-            createdAt: new Date(),
-            fromStatus: null,
-            toStatus: null,
-            note: null,
-            userId: null,
-            ...data,
-          }
-          orderEvents.push(row)
-          undo.push(() => {
-            const i = orderEvents.indexOf(row)
-            if (i >= 0) orderEvents.splice(i, 1)
-          })
-          return { ...row }
-        },
-      },
-      _rollback() {
-        while (undo.length) undo.pop()!()
-      },
-      _release() {
-        if (release) release()
-      },
-    }
-  }
-
-  return {
-    _state: { orders, payments, orderEvents },
-    seedOrder(o: Row = {}) {
-      const row: Row = { id: nid('ord'), totalCents: 10000, paymentStatus: 'PENDING', ...o }
-      orders.push(row)
-      return row
-    },
-    seedPayment(p: Row) {
-      const row: Row = {
-        id: nid('pay'),
-        status: 'PENDING',
-        method: 'PIX',
-        paidAt: null,
-        createdAt: new Date(),
-        notes: null,
-        ...p,
-      }
-      payments.push(row)
-      return row
-    },
-    async $transaction<T>(fn: (tx: ReturnType<typeof makeTx>) => Promise<T>): Promise<T> {
-      const tx = makeTx()
-      try {
-        return await fn(tx)
-      } catch (err) {
-        tx._rollback()
-        throw err
-      } finally {
-        tx._release()
-      }
-    },
-  }
-}
-
-type FakePrisma = ReturnType<typeof makeFakePrisma>
 
 const h = vi.hoisted(() => ({ fake: null as unknown as FakePrisma }))
 
@@ -171,10 +37,13 @@ vi.mock('@/lib/prisma', () => ({
 import {
   createManualPayment,
   transitionPaymentStatus,
+  applyGatewayPaymentUpdate,
   PaymentServiceError,
 } from '@/server/payments'
 
 const staff = { id: 'user_1', email: 'admin@test' } as never
+// staff comum (sem OWNER) e OWNER — para o gate de REFUNDED/CHARGEBACK.
+const owner = { id: 'user_owner', email: 'owner@test', role: 'OWNER' } as never
 
 function eventsFor(orderId: string) {
   return h.fake._state.orderEvents.filter((e) => e.orderId === orderId)
@@ -382,7 +251,7 @@ describe('transitionPaymentStatus — sincronização de Order.paymentStatus', (
     const order = order10k()
     const pay = h.fake.seedPayment({ orderId: order.id, status: 'PAID', amountCents: 10000, paidAt: new Date() })
 
-    await transitionPaymentStatus({ orderId: order.id as string, paymentId: pay.id as string, toStatus: 'REFUNDED', note: null, staff })
+    await transitionPaymentStatus({ orderId: order.id as string, paymentId: pay.id as string, toStatus: 'REFUNDED', note: null, staff: owner })
     expect(h.fake._state.payments[0].status).toBe('REFUNDED')
     expect(orderById(order.id as string).paymentStatus).toBe('REFUNDED')
 
@@ -395,7 +264,7 @@ describe('transitionPaymentStatus — sincronização de Order.paymentStatus', (
     const order = order10k()
     const pay = h.fake.seedPayment({ orderId: order.id, status: 'PAID', amountCents: 10000, paidAt: new Date() })
 
-    await transitionPaymentStatus({ orderId: order.id as string, paymentId: pay.id as string, toStatus: 'CHARGEBACK', note: null, staff })
+    await transitionPaymentStatus({ orderId: order.id as string, paymentId: pay.id as string, toStatus: 'CHARGEBACK', note: null, staff: owner })
     expect(orderById(order.id as string).paymentStatus).toBe('CHARGEBACK')
   })
 })
@@ -442,6 +311,245 @@ describe('concorrência — lock de linha do Order (FOR UPDATE)', () => {
 })
 
 // ---------------------------------------------------------------------------
+describe('transitionPaymentStatus — gate OWNER para REFUNDED/CHARGEBACK', () => {
+  it.each(['REFUNDED', 'CHARGEBACK'] as const)(
+    'staff comum NÃO consegue %s pelo caminho manual (nada é gravado)',
+    async (to) => {
+      const order = order10k()
+      const pay = h.fake.seedPayment({
+        orderId: order.id,
+        status: 'PAID',
+        amountCents: 10000,
+        paidAt: new Date(),
+      })
+
+      await expect(
+        transitionPaymentStatus({
+          orderId: order.id as string,
+          paymentId: pay.id as string,
+          toStatus: to,
+          note: null,
+          staff,
+        }),
+      ).rejects.toThrow(/OWNER/)
+
+      expect(h.fake._state.payments[0].status).toBe('PAID')
+      expect(eventsFor(order.id as string)).toHaveLength(0)
+      expect(orderById(order.id as string).paymentStatus).toBe('PENDING')
+    },
+  )
+
+  it.each(['REFUNDED', 'CHARGEBACK'] as const)('OWNER consegue %s', async (to) => {
+    const order = order10k()
+    const pay = h.fake.seedPayment({
+      orderId: order.id,
+      status: 'PAID',
+      amountCents: 10000,
+      paidAt: new Date(),
+    })
+
+    const updated = await transitionPaymentStatus({
+      orderId: order.id as string,
+      paymentId: pay.id as string,
+      toStatus: to,
+      note: null,
+      staff: owner,
+    })
+
+    expect(updated.status).toBe(to)
+    expect(orderById(order.id as string).paymentStatus).toBe(to)
+  })
+
+  it('transição inválida é barrada ANTES do gate (mensagem "não permitida")', async () => {
+    const order = order10k()
+    const pay = h.fake.seedPayment({ orderId: order.id, status: 'PENDING', amountCents: 10000 })
+    await expect(
+      transitionPaymentStatus({
+        orderId: order.id as string,
+        paymentId: pay.id as string,
+        toStatus: 'REFUNDED',
+        note: null,
+        staff,
+      }),
+    ).rejects.toThrow(/não permitida/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+describe('applyGatewayPaymentUpdate — atualização vinda do Mercado Pago', () => {
+  const mp = (over: Record<string, unknown>) => ({
+    orderId: '',
+    provider: 'mercadopago',
+    providerPaymentId: 'mp_1',
+    rawStatus: 'approved',
+    mappedStatus: 'PAID' as never,
+    amountCents: 10000,
+    method: 'CREDIT_CARD' as never,
+    ...over,
+  })
+
+  function mpPayments(orderId: string) {
+    return h.fake._state.payments.filter((p) => p.orderId === orderId)
+  }
+
+  it('approved, pagamento novo → cria Payment PAID e sincroniza Order.paymentStatus', async () => {
+    const order = order10k()
+    const r = await applyGatewayPaymentUpdate(mp({ orderId: order.id, rawStatus: 'approved', mappedStatus: 'PAID' }))
+
+    expect(r.outcome).toBe('applied')
+    expect(r.paymentStatus).toBe('PAID')
+    const pays = mpPayments(order.id as string)
+    expect(pays).toHaveLength(1)
+    expect(pays[0]).toMatchObject({
+      status: 'PAID',
+      provider: 'mercadopago',
+      providerPaymentId: 'mp_1',
+      providerStatus: 'approved',
+    })
+    expect(pays[0].paidAt).toBeInstanceOf(Date)
+    expect(orderById(order.id as string).paymentStatus).toBe('PAID')
+    const evts = eventsFor(order.id as string)
+    expect(evts.some((e) => e.type === 'PAYMENT_STATUS_CHANGED' && e.toStatus === 'PAID')).toBe(true)
+  })
+
+  it('pending / in_process → cria Payment PENDING', async () => {
+    const order = order10k()
+    const r = await applyGatewayPaymentUpdate(
+      mp({ orderId: order.id, rawStatus: 'pending', mappedStatus: 'PENDING' }),
+    )
+    expect(r.paymentStatus).toBe('PENDING')
+    expect(mpPayments(order.id as string)[0].status).toBe('PENDING')
+  })
+
+  it('rejected / cancelled → cria Payment FAILED, pedido segue PENDING', async () => {
+    const order = order10k()
+    await applyGatewayPaymentUpdate(mp({ orderId: order.id, rawStatus: 'rejected', mappedStatus: 'FAILED' }))
+    expect(mpPayments(order.id as string)[0].status).toBe('FAILED')
+    expect(orderById(order.id as string).paymentStatus).toBe('PENDING')
+  })
+
+  it('status desconhecido → não altera estado (Payment nasce PENDING, evento de nota)', async () => {
+    const order = order10k()
+    const r = await applyGatewayPaymentUpdate(
+      mp({ orderId: order.id, rawStatus: 'in_mediation', mappedStatus: null }),
+    )
+    expect(r.outcome).toBe('noop')
+    expect(mpPayments(order.id as string)[0].status).toBe('PENDING')
+    expect(mpPayments(order.id as string)[0].providerStatus).toBe('in_mediation')
+  })
+
+  it('refunded (pagamento novo) → NÃO aplica REFUNDED: fica PAID + sinaliza OWNER', async () => {
+    const order = order10k()
+    const r = await applyGatewayPaymentUpdate(
+      mp({ orderId: order.id, rawStatus: 'refunded', mappedStatus: 'REFUNDED' }),
+    )
+    expect(r.outcome).toBe('owner_action_required')
+    const pay = mpPayments(order.id as string)[0]
+    expect(pay.status).toBe('PAID')
+    expect(pay.providerStatus).toBe('refunded')
+    const notes = eventsFor(order.id as string).filter((e) => e.type === 'NOTE')
+    expect(notes.some((n) => /OWNER/.test(String(n.note)))).toBe(true)
+  })
+
+  it('charged_back (pagamento novo) → NÃO aplica CHARGEBACK: fica PAID + sinaliza OWNER', async () => {
+    const order = order10k()
+    const r = await applyGatewayPaymentUpdate(
+      mp({ orderId: order.id, rawStatus: 'charged_back', mappedStatus: 'CHARGEBACK' }),
+    )
+    expect(r.outcome).toBe('owner_action_required')
+    expect(mpPayments(order.id as string)[0].status).toBe('PAID')
+  })
+
+  it('notificação repetida é idempotente (mesmo providerStatus → nenhum efeito novo)', async () => {
+    const order = order10k()
+    h.fake.seedPayment({
+      orderId: order.id,
+      status: 'PAID',
+      amountCents: 10000,
+      paidAt: new Date(),
+      provider: 'mercadopago',
+      providerPaymentId: 'mp_1',
+      providerStatus: 'approved',
+    })
+    orderById(order.id as string).paymentStatus = 'PAID'
+    const before = eventsFor(order.id as string).length
+
+    const r = await applyGatewayPaymentUpdate(mp({ orderId: order.id, rawStatus: 'approved', mappedStatus: 'PAID' }))
+
+    expect(r.outcome).toBe('noop')
+    expect(eventsFor(order.id as string).length).toBe(before)
+    expect(h.fake._state.payments).toHaveLength(1)
+  })
+
+  it('pagamento MP existente PENDING → approved: transiciona para PAID pela lógica central', async () => {
+    const order = order10k()
+    h.fake.seedPayment({
+      orderId: order.id,
+      status: 'PENDING',
+      amountCents: 10000,
+      provider: 'mercadopago',
+      providerPaymentId: 'mp_1',
+      providerStatus: 'pending',
+    })
+
+    const r = await applyGatewayPaymentUpdate(mp({ orderId: order.id, rawStatus: 'approved', mappedStatus: 'PAID' }))
+
+    expect(r.outcome).toBe('applied')
+    expect(h.fake._state.payments[0].status).toBe('PAID')
+    expect(h.fake._state.payments[0].providerStatus).toBe('approved')
+    expect(orderById(order.id as string).paymentStatus).toBe('PAID')
+  })
+
+  it('pagamento MP existente PAID → refunded: mantém PAID, sinaliza OWNER, e repetição não duplica nota', async () => {
+    const order = order10k()
+    h.fake.seedPayment({
+      orderId: order.id,
+      status: 'PAID',
+      amountCents: 10000,
+      paidAt: new Date(),
+      provider: 'mercadopago',
+      providerPaymentId: 'mp_1',
+      providerStatus: 'approved',
+    })
+    orderById(order.id as string).paymentStatus = 'PAID'
+
+    const r1 = await applyGatewayPaymentUpdate(
+      mp({ orderId: order.id, rawStatus: 'refunded', mappedStatus: 'REFUNDED' }),
+    )
+    expect(r1.outcome).toBe('owner_action_required')
+    expect(h.fake._state.payments[0].status).toBe('PAID')
+    expect(orderById(order.id as string).paymentStatus).toBe('PAID')
+
+    const notesAfter1 = eventsFor(order.id as string).filter((e) => e.type === 'NOTE').length
+
+    const r2 = await applyGatewayPaymentUpdate(
+      mp({ orderId: order.id, rawStatus: 'refunded', mappedStatus: 'REFUNDED' }),
+    )
+    expect(r2.outcome).toBe('noop') // já registrado (providerStatus == 'refunded')
+    expect(eventsFor(order.id as string).filter((e) => e.type === 'NOTE').length).toBe(notesAfter1)
+  })
+
+  it('confirmação MP que excederia o total (já há pagamento manual) → registra PENDENTE e sinaliza conflito', async () => {
+    const order = order10k()
+    h.fake.seedPayment({ orderId: order.id, status: 'PAID', amountCents: 10000 }) // manual
+    orderById(order.id as string).paymentStatus = 'PAID'
+
+    const r = await applyGatewayPaymentUpdate(mp({ orderId: order.id, rawStatus: 'approved', mappedStatus: 'PAID' }))
+
+    expect(r.outcome).toBe('conflict')
+    const mpPay = h.fake._state.payments.find((p) => p.providerPaymentId === 'mp_1')!
+    expect(mpPay.status).toBe('PENDING')
+    expect(orderById(order.id as string).paymentStatus).toBe('PAID')
+  })
+
+  it('pedido inexistente → PaymentServiceError', async () => {
+    await expect(
+      applyGatewayPaymentUpdate(mp({ orderId: 'nao_existe' })),
+    ).rejects.toBeInstanceOf(PaymentServiceError)
+  })
+})
+
+// ---------------------------------------------------------------------------
 function order10k() {
-  return h.fake.seedOrder({ totalCents: 10000, paymentStatus: 'PENDING' })
+  return h.fake.seedOrder({ totalCents: 10000, paymentStatus: 'PENDING', currency: 'BRL' })
 }

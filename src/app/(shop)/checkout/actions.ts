@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma'
 import { getProductsForCart } from '@/server/catalog'
 import { computeOrderTotals } from '@/lib/order-pricing'
 import { findInsufficientStockItems } from '@/lib/stock'
+import { createCheckoutPreference, isMercadoPagoConfigured } from '@/lib/mercadopago'
 
 const MAX_QTY_PER_LINE = 99
 const NONCE_COOKIE = 'venus_checkout_nonce'
@@ -149,7 +150,6 @@ const checkoutSchema = z
     complement: z.string().trim().optional().or(z.literal('').transform(() => undefined)),
     reference: z.string().trim().optional().or(z.literal('').transform(() => undefined)),
     addressPhone: z.string().trim().optional().or(z.literal('').transform(() => undefined)),
-    paymentMethod: z.enum(['PIX', 'BOLETO', 'OTHER']),
   })
   .refine((d) => d.customerEmail || d.customerPhone, {
     message: 'Informe pelo menos um e-mail ou telefone de contato.',
@@ -199,7 +199,6 @@ export async function createWebsiteOrder(
     complement: formData.get('complement') ?? '',
     reference: formData.get('reference') ?? '',
     addressPhone: formData.get('addressPhone') ?? '',
-    paymentMethod: formData.get('paymentMethod'),
   })
 
   if (!parsed.success) {
@@ -209,9 +208,9 @@ export async function createWebsiteOrder(
 
   const d = parsed.data
 
-  let orderNumber: number
+  let created: { id: string; number: number; totalCents: number }
   try {
-    orderNumber = await prisma.$transaction(async (tx) => {
+    created = await prisma.$transaction(async (tx) => {
       // Fonte da verdade: preço e status vêm do banco, dentro da transação.
       const ids = [...new Set(d.items.map((i) => i.productId))]
       const products = await tx.product.findMany({
@@ -333,13 +332,8 @@ export async function createWebsiteOrder(
               phone: d.addressPhone ?? null,
             },
           },
-          payments: {
-            create: {
-              method: d.paymentMethod,
-              status: 'PENDING',
-              amountCents: totals.totalCents,
-            },
-          },
+          // Nenhum Payment é criado aqui: o(s) Payment(s) deste pedido nascem do
+          // Mercado Pago (webhook / reconsulta) ou de registro manual no admin.
           events: {
             create: {
               type: 'ORDER_STATUS_CHANGED',
@@ -348,10 +342,10 @@ export async function createWebsiteOrder(
             },
           },
         },
-        select: { number: true },
+        select: { id: true, number: true, totalCents: true },
       })
 
-      return order.number
+      return { id: order.id, number: order.number, totalCents: order.totalCents }
     })
   } catch (err) {
     if (err instanceof CheckoutError) return { error: err.message }
@@ -368,5 +362,24 @@ export async function createWebsiteOrder(
     })
   }
 
-  redirect(`/checkout/sucesso?pedido=${orderNumber}`)
+  // Pagamento via Mercado Pago Checkout Pro: o pedido já existe (PENDING); cria a
+  // preferência e redireciona para o ambiente do Mercado Pago. Sem credenciais
+  // configuradas, ou se a criação da preferência falhar, cai na página de
+  // confirmação — o pedido fica PENDING e o pagamento é tratado manualmente.
+  let destination = `/checkout/sucesso?pedido=${created.number}`
+  if (isMercadoPagoConfigured()) {
+    try {
+      const preference = await createCheckoutPreference({
+        orderId: created.id,
+        orderNumber: created.number,
+        totalCents: created.totalCents,
+        currency: 'BRL',
+      })
+      destination = preference.initPoint
+    } catch (err) {
+      console.error('[createWebsiteOrder] preferência Mercado Pago falhou', err)
+    }
+  }
+
+  redirect(destination)
 }

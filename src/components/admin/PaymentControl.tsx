@@ -4,6 +4,7 @@ import { useActionState } from 'react'
 import {
   updatePaymentStatus,
   createPayment,
+  reconsultMercadoPagoPayment,
   type OrderActionState,
 } from '@/app/(admin)/admin/(dashboard)/pedidos/[id]/actions'
 import {
@@ -54,13 +55,29 @@ export interface PaymentRowValue {
   createdAt: Date
 }
 
-function PaymentRow({ orderId, payment }: { orderId: string; payment: PaymentRowValue }) {
+const REVERSAL_STATUSES: PaymentStatusValue[] = ['REFUNDED', 'CHARGEBACK']
+
+function PaymentRow({
+  orderId,
+  payment,
+  canReverse,
+}: {
+  orderId: string
+  payment: PaymentRowValue
+  canReverse: boolean
+}) {
   const [state, formAction, isPending] = useActionState<OrderActionState, FormData>(
     updatePaymentStatus,
     {},
   )
-  const options = nextStatuses(payment.status as PaymentStatusValue)
-  const isTerminal = options.length === 0
+  const allOptions = nextStatuses(payment.status as PaymentStatusValue)
+  // Estorno/chargeback só aparecem para o OWNER (o servidor também barra — este é
+  // apenas o reflexo na UI). Ver assertCanReverse em src/server/payments.ts.
+  const options = canReverse
+    ? allOptions
+    : allOptions.filter((o) => !REVERSAL_STATUSES.includes(o))
+  const isTerminal = allOptions.length === 0
+  const ownerOnlyBlocked = !isTerminal && options.length === 0
 
   return (
     <div className="rounded-md border p-3">
@@ -79,6 +96,11 @@ function PaymentRow({ orderId, payment }: { orderId: string; payment: PaymentRow
       {isTerminal ? (
         <p className="mt-2 text-xs text-muted-foreground">
           Status final — sem novas transições para este pagamento.
+        </p>
+      ) : ownerOnlyBlocked ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Somente o proprietário (OWNER) pode registrar estorno ou chargeback deste
+          pagamento.
         </p>
       ) : (
         <form action={formAction} className="mt-3 space-y-2">
@@ -184,14 +206,43 @@ function AddPaymentForm({
   )
 }
 
+function ReconsultMercadoPago({ orderId }: { orderId: string }) {
+  const [state, formAction, isPending] = useActionState<OrderActionState, FormData>(
+    reconsultMercadoPagoPayment,
+    {},
+  )
+  return (
+    <form action={formAction} className="space-y-2 border-t pt-3">
+      <input type="hidden" name="orderId" value={orderId} />
+      <p className="text-xs text-muted-foreground">
+        Sincroniza este pedido com o Mercado Pago (útil se a notificação automática não
+        chegou). Não aplica estorno/chargeback — isso continua exigindo o OWNER.
+      </p>
+      <Button type="submit" size="sm" variant="outline" disabled={isPending}>
+        {isPending ? 'Consultando...' : 'Reconsultar no Mercado Pago'}
+      </Button>
+      {state.error && (
+        <p className="text-destructive" role="alert">
+          {state.error}
+        </p>
+      )}
+      {state.ok && <p className="text-xs text-emerald-600">Pedido sincronizado.</p>}
+    </form>
+  )
+}
+
 export default function PaymentControl({
   orderId,
   orderTotalCents,
   payments,
+  canReverse,
+  mercadoPagoEnabled,
 }: {
   orderId: string
   orderTotalCents: number
   payments: PaymentRowValue[]
+  canReverse: boolean
+  mercadoPagoEnabled: boolean
 }) {
   const summary = summarizePayments(
     payments.map((p) => ({ status: p.status as PaymentStatusValue, amountCents: p.amountCents })),
@@ -227,10 +278,12 @@ export default function PaymentControl({
       ) : (
         <div className="space-y-3">
           {payments.map((p) => (
-            <PaymentRow key={p.id} orderId={orderId} payment={p} />
+            <PaymentRow key={p.id} orderId={orderId} payment={p} canReverse={canReverse} />
           ))}
         </div>
       )}
+
+      {mercadoPagoEnabled && <ReconsultMercadoPago orderId={orderId} />}
 
       <AddPaymentForm
         orderId={orderId}

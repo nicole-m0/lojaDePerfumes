@@ -391,7 +391,9 @@ model OrderAddress {
 }
 
 // --- Pagamento (1 pedido -> N tentativas) -------------------------------
-// Sem integração com gateway. NUNCA armazenar dados sensíveis de cartão.
+// Registro manual pelo admin OU alimentado pelo gateway (Mercado Pago, Fase 4).
+// NUNCA armazenar dados sensíveis de cartão. Order.paymentStatus é sempre
+// derivado da soma dos Payments (summarizePayments), nunca setado direto.
 
 model Payment {
   id      String @id @default(cuid())
@@ -402,8 +404,13 @@ model Payment {
   status      PaymentStatus @default(PENDING)
   amountCents Int
 
-  provider          String? // ex.: "mercadopago" — uso futuro
+  // Gateway. `provider` = "mercadopago" quando originado pelo Checkout Pro.
+  // `providerPaymentId` = id do pagamento no gateway. `providerStatus` = status
+  // cru do gateway visto por último (ex.: "approved", "refunded") — usado como
+  // chave de idempotência do webhook e para auditoria.
+  provider          String?
   providerPaymentId String?
+  providerStatus    String?
   paidAt            DateTime?
 
   notes String?
@@ -411,6 +418,10 @@ model Payment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Um pagamento do gateway (provider + providerPaymentId) mapeia para no máximo
+  // um Payment. NULLs não colidem no Postgres, então registros manuais
+  // (provider/providerPaymentId nulos) não são afetados.
+  @@unique([provider, providerPaymentId])
   @@index([orderId])
   @@index([status])
 }

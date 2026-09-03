@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   canTransition,
   isTerminalPaymentStatus,
+  mapMercadoPagoMethod,
   mapMercadoPagoStatus,
   nextStatuses,
   summarizePayments,
@@ -209,5 +210,33 @@ describe('mapMercadoPagoStatus', () => {
       expect(mapped).not.toBeNull()
       expect(known.has(mapped as string)).toBe(true)
     }
+  })
+})
+
+describe('mapMercadoPagoMethod', () => {
+  it('payment_method_id "pix" tem prioridade e mapeia para PIX', () => {
+    expect(mapMercadoPagoMethod('bank_transfer', 'pix')).toBe('PIX')
+    expect(mapMercadoPagoMethod('account_money', 'pix')).toBe('PIX')
+  })
+
+  it('cartões', () => {
+    expect(mapMercadoPagoMethod('credit_card')).toBe('CREDIT_CARD')
+    expect(mapMercadoPagoMethod('debit_card')).toBe('DEBIT_CARD')
+  })
+
+  it('boleto (ticket) e transferência bancária/pix', () => {
+    expect(mapMercadoPagoMethod('ticket')).toBe('BOLETO')
+    expect(mapMercadoPagoMethod('bank_transfer')).toBe('PIX')
+  })
+
+  it('account_money → BANK_TRANSFER (saldo em conta)', () => {
+    expect(mapMercadoPagoMethod('account_money')).toBe('BANK_TRANSFER')
+  })
+
+  it('desconhecido / vazio → OTHER, nunca lança', () => {
+    expect(mapMercadoPagoMethod('qualquer_coisa')).toBe('OTHER')
+    expect(mapMercadoPagoMethod(null)).toBe('OTHER')
+    expect(mapMercadoPagoMethod(undefined, undefined)).toBe('OTHER')
+    expect(mapMercadoPagoMethod('')).toBe('OTHER')
   })
 })
