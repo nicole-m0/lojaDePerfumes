@@ -50,6 +50,9 @@ async function seedCatalog() {
   }
 
   for (const p of products) {
+    // Dados físicos p/ frete (weightGrams/heightCm/widthCm/lengthCm) não são
+    // definidos aqui: o catálogo de origem não os tem. Produtos novos herdam os
+    // defaults seguros do schema; os já existentes mantêm o que o admin ajustou.
     const data = {
       name: p.name,
       description: p.description,

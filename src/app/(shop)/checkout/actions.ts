@@ -8,6 +8,13 @@ import { getProductsForCart } from '@/server/catalog'
 import { computeOrderTotals } from '@/lib/order-pricing'
 import { findInsufficientStockItems } from '@/lib/stock'
 import { createCheckoutPreference, isMercadoPagoConfigured } from '@/lib/mercadopago'
+import {
+  quoteShippingForCart,
+  resolveShippingSelection,
+  ShippingUnavailableError,
+} from '@/server/shipping'
+import { isValidZip } from '@/lib/shipping/cep'
+import type { ShippingItemInput, ShippingOption } from '@/lib/shipping/types'
 
 const MAX_QTY_PER_LINE = 99
 const NONCE_COOKIE = 'venus_checkout_nonce'
@@ -106,6 +113,69 @@ export async function getCartPricing(
 }
 
 // ---------------------------------------------------------------------------
+// Leitura: cotação de frete (Melhor Envio) para a tela de checkout.
+// O cliente escolhe uma opção; o preço só é confiado depois de RECOTADO no
+// servidor em `createWebsiteOrder`.
+// ---------------------------------------------------------------------------
+
+export interface ShippingQuoteState {
+  options?: ShippingOption[]
+  destZip?: string
+  error?: string
+}
+
+/** Monta os itens físicos (produtos ATIVOS) para cotar frete. */
+async function loadShippingItems(
+  rawItems: { productId: string; quantity: number }[],
+): Promise<ShippingItemInput[]> {
+  const parsed = rawItemsSchema.safeParse(rawItems)
+  const items = parsed.success ? parsed.data : []
+  if (items.length === 0) return []
+
+  const products = await getProductsForCart(items.map((i) => i.productId))
+  const byId = new Map(products.map((p) => [p.id, p]))
+
+  return items.flatMap((item) => {
+    const p = byId.get(item.productId)
+    if (!p || p.status !== 'ACTIVE') return []
+    return [
+      {
+        weightGrams: p.weightGrams,
+        heightCm: p.heightCm,
+        widthCm: p.widthCm,
+        lengthCm: p.lengthCm,
+        quantity: item.quantity,
+        unitPriceCents: p.priceCents,
+      },
+    ]
+  })
+}
+
+export async function quoteCartShipping(input: {
+  destZip: string
+  items: { productId: string; quantity: number }[]
+}): Promise<ShippingQuoteState> {
+  const destZip = String(input.destZip ?? '')
+  if (!isValidZip(destZip)) {
+    return { error: 'Informe um CEP válido (8 dígitos).' }
+  }
+
+  const items = await loadShippingItems(input.items ?? [])
+  if (items.length === 0) {
+    return { error: 'Adicione itens disponíveis ao carrinho para calcular o frete.' }
+  }
+
+  try {
+    const quote = await quoteShippingForCart({ destZip, items })
+    return { options: quote.options, destZip: quote.destZip }
+  } catch (err) {
+    if (err instanceof ShippingUnavailableError) return { error: err.message }
+    console.error('[quoteCartShipping]', err)
+    return { error: 'Não foi possível calcular o frete agora. Tente novamente em instantes.' }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Mutação: criação do pedido do site (origem WEBSITE).
 // ---------------------------------------------------------------------------
 
@@ -150,6 +220,9 @@ const checkoutSchema = z
     complement: z.string().trim().optional().or(z.literal('').transform(() => undefined)),
     reference: z.string().trim().optional().or(z.literal('').transform(() => undefined)),
     addressPhone: z.string().trim().optional().or(z.literal('').transform(() => undefined)),
+    // Código do serviço de frete escolhido (Melhor Envio). Só referência — o
+    // preço é sempre RECOTADO no servidor antes de criar o pedido.
+    shippingServiceCode: z.string().trim().min(1, 'Calcule e escolha uma opção de frete.'),
   })
   .refine((d) => d.customerEmail || d.customerPhone, {
     message: 'Informe pelo menos um e-mail ou telefone de contato.',
@@ -199,6 +272,7 @@ export async function createWebsiteOrder(
     complement: formData.get('complement') ?? '',
     reference: formData.get('reference') ?? '',
     addressPhone: formData.get('addressPhone') ?? '',
+    shippingServiceCode: formData.get('shippingServiceCode') ?? '',
   })
 
   if (!parsed.success) {
@@ -207,6 +281,29 @@ export async function createWebsiteOrder(
   }
 
   const d = parsed.data
+
+  // Frete: RECOTADO no servidor a partir do CEP de entrega e dos itens do
+  // carrinho — o preço enviado pelo cliente nunca é autoritativo. Se a cotação
+  // falhar, o pedido NÃO é criado (frete desconhecido = total incorreto).
+  let shipping: { quote: Awaited<ReturnType<typeof quoteShippingForCart>>; option: ShippingOption }
+  try {
+    const shippingItems = await loadShippingItems(d.items)
+    if (shippingItems.length === 0) {
+      return { error: 'Nenhum item disponível para calcular o frete. Revise o carrinho.' }
+    }
+    // skipCache: a criação do pedido sempre recota no provedor — o cache só vale
+    // para o botão "calcular frete" da tela de checkout.
+    const quote = await quoteShippingForCart({
+      destZip: d.zipCode,
+      items: shippingItems,
+      skipCache: true,
+    })
+    shipping = { quote, option: resolveShippingSelection(quote, d.shippingServiceCode) }
+  } catch (err) {
+    if (err instanceof ShippingUnavailableError) return { error: err.message }
+    console.error('[createWebsiteOrder] cotação de frete', err)
+    return { error: 'Não foi possível calcular o frete agora. Tente novamente em instantes.' }
+  }
 
   let created: { id: string; number: number; totalCents: number }
   try {
@@ -257,7 +354,11 @@ export async function createWebsiteOrder(
         unitPriceCents: byId.get(i.productId)!.priceCents,
         quantity: i.quantity,
       }))
-      const totals = computeOrderTotals(pricingInput)
+      // Frete recotado no servidor entra aqui — trava o valor em Order.totalCents
+      // ANTES de qualquer Payment ou da preferência do Mercado Pago.
+      const totals = computeOrderTotals(pricingInput, {
+        shippingCents: shipping.option.priceCents,
+      })
 
       // Cliente: reaproveita o model Customer existente (sem login, sem schema novo).
       // `email`/`phone` não são @unique no schema — dedup por findFirst (ambos indexados).
@@ -300,7 +401,7 @@ export async function createWebsiteOrder(
           customerPhone: d.customerPhone ?? null,
           subtotalCents: totals.subtotalCents,
           discountCents: 0,
-          shippingCents: 0,
+          shippingCents: totals.shippingCents,
           totalCents: totals.totalCents,
           currency: 'BRL',
           items: {
@@ -330,6 +431,25 @@ export async function createWebsiteOrder(
               complement: d.complement ?? null,
               reference: d.reference ?? null,
               phone: d.addressPhone ?? null,
+            },
+          },
+          // Snapshot imutável da cotação de frete escolhida (Fase 5). Independe de
+          // Shipment — atualizar a entrega depois não altera este registro.
+          shippingQuote: {
+            create: {
+              originZip: shipping.quote.originZip,
+              destZip: shipping.quote.destZip,
+              provider: 'melhorenvio',
+              serviceCode: shipping.option.serviceCode,
+              serviceName: shipping.option.serviceName,
+              carrier: shipping.option.carrier,
+              priceCents: shipping.option.priceCents,
+              deliveryDaysMin: shipping.option.deliveryDaysMin,
+              deliveryDaysMax: shipping.option.deliveryDaysMax,
+              packageWeightGrams: shipping.quote.package.weightGrams,
+              packageHeightCm: shipping.quote.package.heightCm,
+              packageWidthCm: shipping.quote.package.widthCm,
+              packageLengthCm: shipping.quote.package.lengthCm,
             },
           },
           // Nenhum Payment é criado aqui: o(s) Payment(s) deste pedido nascem do

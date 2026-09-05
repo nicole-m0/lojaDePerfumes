@@ -29,10 +29,22 @@ describe('computeOrderTotals', () => {
     expect(t.totalCents).toBe(30480)
   })
 
-  it('desconto e frete são sempre 0 nesta fase', () => {
+  it('sem opções: desconto e frete ficam em 0', () => {
     const t = computeOrderTotals([{ unitPriceCents: 10000, quantity: 1 }])
     expect(t.discountCents).toBe(0)
     expect(t.shippingCents).toBe(0)
     expect(t.lines[0].discountCents).toBe(0)
+  })
+
+  it('soma o frete recotado no total (Fase 5)', () => {
+    const t = computeOrderTotals([{ unitPriceCents: 12990, quantity: 2 }], { shippingCents: 2450 })
+    expect(t.subtotalCents).toBe(25980)
+    expect(t.shippingCents).toBe(2450)
+    expect(t.totalCents).toBe(28430)
+  })
+
+  it('frete negativo ou fracionário é saneado (>= 0, inteiro)', () => {
+    expect(computeOrderTotals([], { shippingCents: -500 }).shippingCents).toBe(0)
+    expect(computeOrderTotals([], { shippingCents: 1234.6 }).shippingCents).toBe(1235)
   })
 })

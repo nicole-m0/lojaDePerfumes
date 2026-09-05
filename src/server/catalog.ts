@@ -178,6 +178,11 @@ export async function getProductsForCart(ids: string[]) {
       compareAtPriceCents: true,
       iconKey: true,
       gradient: true,
+      // Dados físicos para a cotação de frete (Fase 5).
+      weightGrams: true,
+      heightCm: true,
+      widthCm: true,
+      lengthCm: true,
       images: { orderBy: { position: 'asc' }, take: 1, select: { url: true } },
     },
   })

@@ -19,6 +19,10 @@ const EMPTY: ProductFormValues = {
   featured: false,
   iconKey: '',
   gradient: '',
+  weightGrams: 300,
+  heightCm: 6,
+  widthCm: 11,
+  lengthCm: 16,
   specs: [],
   images: [],
 }

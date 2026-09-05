@@ -32,6 +32,7 @@ export async function getAdminOrder(id: string) {
       items: { orderBy: { createdAt: 'asc' } },
       payments: { orderBy: { createdAt: 'desc' } },
       shipment: true,
+      shippingQuote: true,
       invoices: { orderBy: { createdAt: 'desc' } },
       events: {
         orderBy: { createdAt: 'desc' },

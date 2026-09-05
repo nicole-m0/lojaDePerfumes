@@ -48,6 +48,10 @@ export default async function EditProductPage({ params }: PageProps) {
     stockOnHand: product.stockOnHand,
     iconKey: product.iconKey ?? '',
     gradient: product.gradient ?? '',
+    weightGrams: product.weightGrams,
+    heightCm: product.heightCm,
+    widthCm: product.widthCm,
+    lengthCm: product.lengthCm,
     specs: product.specs.map((s) => ({ label: s.label, value: s.value })),
     images: product.images.map((img) => ({
       url: img.url,

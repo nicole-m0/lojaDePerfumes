@@ -1,7 +1,9 @@
 // Loja Vênus — schema Prisma
 // Fase 0: autenticação (Auth.js) + configurações da loja.
 // Fase 1: catálogo (categorias, marcas, produtos, imagens, especificações).
-// Pedidos, estoque, financeiro, entregas e fiscal entram nas fases seguintes.
+// Fase 4: pagamento (Mercado Pago Checkout Pro) — campos de gateway em Payment.
+// Fase 5: frete (Melhor Envio) — dados físicos em Product + snapshot ShippingQuote.
+// Pedidos, estoque, financeiro e fiscal completam-se nas fases seguintes.
 
 generator client {
   provider = "prisma-client-js"
@@ -133,6 +135,15 @@ model Product {
   // Estoque: saldo em cache. O livro-razão (histórico) fica em StockMovement.
   // Sem baixa automática nesta etapa — apenas o campo.
   stockOnHand Int @default(0)
+
+  // Dados físicos para cotação de frete (Fase 5 — Melhor Envio). Sempre inteiros:
+  // peso em gramas, dimensões em centímetros. Defaults seguros (caixa pequena de
+  // perfume) cobrem produtos já cadastrados e o seed; ajuste por produto no admin.
+  // Os defaults respeitam os mínimos dos Correios (compr. >= 15, larg. >= 10).
+  weightGrams Int @default(300)
+  heightCm    Int @default(6)
+  widthCm     Int @default(11)
+  lengthCm    Int @default(16)
 
   // Avaliações — herdadas do catálogo estático; sistema de reviews é fase futura.
   ratingAvg   Float @default(0)
@@ -322,12 +333,13 @@ model Order {
 
   notes String?
 
-  items    OrderItem[]
-  address  OrderAddress?
-  payments Payment[]
-  shipment Shipment?
-  invoices Invoice[]
-  events   OrderEvent[]
+  items         OrderItem[]
+  address       OrderAddress?
+  payments      Payment[]
+  shipment      Shipment?
+  shippingQuote ShippingQuote?
+  invoices      Invoice[]
+  events        OrderEvent[]
 
   stockMovements StockMovement[]
 
@@ -446,6 +458,48 @@ model Shipment {
   updatedAt DateTime @updatedAt
 
   @@index([status])
+}
+
+// --- Cotação de frete escolhida no checkout (SNAPSHOT imutável) --------
+// Fase 5 — Melhor Envio. Registra a opção de frete que o cliente escolheu e que
+// foi RECOTADA no servidor antes de criar o pedido (o preço enviado pelo cliente
+// nunca é autoritativo). É 1:1 com Order e independente de Shipment: atualizar a
+// entrega (Shipment) no pós-venda NUNCA altera este snapshot. `priceCents` aqui
+// deve bater com `Order.shippingCents` no momento da criação do pedido.
+model ShippingQuote {
+  id      String @id @default(cuid())
+  orderId String @unique
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // Origem (config da loja) e destino (CEP do endereço de entrega) usados na cotação.
+  originZip String
+  destZip   String
+
+  // Provedor e serviço escolhido — snapshot. `provider` = "melhorenvio" nesta fase.
+  // `serviceCode` = id do serviço no Melhor Envio; `serviceName`/`carrier` p/ exibição.
+  provider    String @default("melhorenvio")
+  serviceCode String
+  serviceName String
+  carrier     String
+
+  // Valor do frete escolhido, em centavos (inteiro).
+  priceCents Int
+
+  // Prazo estimado em dias úteis, conforme a cotação (pode não vir).
+  deliveryDaysMin Int?
+  deliveryDaysMax Int?
+
+  // Pacote agregado enviado à cotação — auditoria (gramas / centímetros).
+  packageWeightGrams Int
+  packageHeightCm    Int
+  packageWidthCm     Int
+  packageLengthCm    Int
+
+  quotedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([provider])
 }
 
 // --- Nota fiscal (preparação p/ NF-e — SEM emissão real / SEFAZ) --------

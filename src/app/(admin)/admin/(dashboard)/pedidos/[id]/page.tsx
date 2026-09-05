@@ -219,8 +219,55 @@ export default async function OrderDetailPage({ params }: PageProps) {
           <CardHeader>
             <CardTitle className="text-base">Entrega</CardTitle>
           </CardHeader>
-          <CardContent>
-            <ShipmentForm orderId={order.id} shipment={order.shipment} />
+          <CardContent className="space-y-4">
+            {order.shippingQuote && (
+              <dl className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                <div className="mb-1 text-xs font-medium text-muted-foreground">
+                  Frete escolhido no checkout (snapshot — não muda ao atualizar a entrega)
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Serviço</dt>
+                  <dd>
+                    {order.shippingQuote.carrier
+                      ? `${order.shippingQuote.carrier} · `
+                      : ''}
+                    {order.shippingQuote.serviceName}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Valor</dt>
+                  <dd className="tabular-nums">{formatCents(order.shippingQuote.priceCents)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Prazo estimado</dt>
+                  <dd>
+                    {order.shippingQuote.deliveryDaysMax != null
+                      ? `${
+                          order.shippingQuote.deliveryDaysMin &&
+                          order.shippingQuote.deliveryDaysMin !== order.shippingQuote.deliveryDaysMax
+                            ? `${order.shippingQuote.deliveryDaysMin}–`
+                            : ''
+                        }${order.shippingQuote.deliveryDaysMax} dias úteis`
+                      : '—'}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Cotado em</dt>
+                  <dd>{fmtDate(order.shippingQuote.quotedAt)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">CEP origem → destino</dt>
+                  <dd className="tabular-nums">
+                    {order.shippingQuote.originZip} → {order.shippingQuote.destZip}
+                  </dd>
+                </div>
+              </dl>
+            )}
+            <ShipmentForm
+              orderId={order.id}
+              shipment={order.shipment}
+              defaultCarrier={order.shippingQuote?.carrier ?? null}
+            />
           </CardContent>
         </Card>
       </div>

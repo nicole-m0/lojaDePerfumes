@@ -28,6 +28,11 @@ export interface ProductFormValues {
   featured: boolean
   iconKey: string
   gradient: string
+  /** Dados físicos p/ cotação de frete (Fase 5) — peso em gramas, medidas em cm. */
+  weightGrams: number
+  heightCm: number
+  widthCm: number
+  lengthCm: number
   specs: { label: string; value: string }[]
   images: ProductImageInput[]
   /** Somente exibição na edição — ajustes passam por /admin/estoque. */
@@ -235,6 +240,63 @@ export default function ProductForm({
           </div>
         )}
       </div>
+
+      <fieldset className="space-y-3 rounded-lg border p-4">
+        <legend className="px-1 text-sm font-medium">Frete e dimensões</legend>
+        <p className="text-xs text-muted-foreground">
+          Usados para calcular o frete (Melhor Envio). Peso em gramas, medidas em centímetros.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-4">
+          <div>
+            <Label htmlFor="weightGrams">Peso (g)</Label>
+            <Input
+              id="weightGrams"
+              name="weightGrams"
+              type="number"
+              min={1}
+              step={1}
+              defaultValue={initialValues.weightGrams}
+              className="mt-1.5"
+            />
+          </div>
+          <div>
+            <Label htmlFor="heightCm">Altura (cm)</Label>
+            <Input
+              id="heightCm"
+              name="heightCm"
+              type="number"
+              min={1}
+              step={1}
+              defaultValue={initialValues.heightCm}
+              className="mt-1.5"
+            />
+          </div>
+          <div>
+            <Label htmlFor="widthCm">Largura (cm)</Label>
+            <Input
+              id="widthCm"
+              name="widthCm"
+              type="number"
+              min={1}
+              step={1}
+              defaultValue={initialValues.widthCm}
+              className="mt-1.5"
+            />
+          </div>
+          <div>
+            <Label htmlFor="lengthCm">Comprimento (cm)</Label>
+            <Input
+              id="lengthCm"
+              name="lengthCm"
+              type="number"
+              min={1}
+              step={1}
+              defaultValue={initialValues.lengthCm}
+              className="mt-1.5"
+            />
+          </div>
+        </div>
+      </fieldset>
 
       <fieldset className="space-y-3 rounded-lg border p-4">
         <legend className="px-1 text-sm font-medium">Especificações</legend>

@@ -38,9 +38,12 @@ const toDateInput = (d: Date | null | undefined) =>
 export default function ShipmentForm({
   orderId,
   shipment,
+  defaultCarrier = null,
 }: {
   orderId: string
   shipment: ShipmentValue | null
+  /** Transportadora sugerida pela cotação de frete (Fase 5) — só prefill quando ainda não há entrega. */
+  defaultCarrier?: string | null
 }) {
   const [state, formAction, isPending] = useActionState<OrderActionState, FormData>(
     upsertShipment,
@@ -73,7 +76,7 @@ export default function ShipmentForm({
           <Input
             id="shipment-carrier"
             name="carrier"
-            defaultValue={shipment?.carrier ?? ''}
+            defaultValue={shipment?.carrier ?? defaultCarrier ?? ''}
             className="mt-1.5"
           />
         </div>

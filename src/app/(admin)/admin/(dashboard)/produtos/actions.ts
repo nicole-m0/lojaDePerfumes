@@ -35,6 +35,11 @@ const productSchema = z.object({
   featured: z.boolean(),
   iconKey: z.string().optional(),
   gradient: z.string().optional(),
+  // Dados físicos p/ frete (Fase 5). Defaults seguros = caixa pequena de perfume.
+  weightGrams: z.coerce.number().int().min(1).catch(300),
+  heightCm: z.coerce.number().int().min(1).catch(6),
+  widthCm: z.coerce.number().int().min(1).catch(11),
+  lengthCm: z.coerce.number().int().min(1).catch(16),
   specs: z.array(specSchema),
   images: z.array(imageSchema),
   /** Só é aplicado na criação — edição de estoque passa pela tela /admin/estoque. */
@@ -83,6 +88,10 @@ export async function saveProduct(
     featured: formData.get('featured') === 'on',
     iconKey: (formData.get('iconKey') as string) || undefined,
     gradient: (formData.get('gradient') as string) || undefined,
+    weightGrams: formData.get('weightGrams'),
+    heightCm: formData.get('heightCm'),
+    widthCm: formData.get('widthCm'),
+    lengthCm: formData.get('lengthCm'),
     specs: parseJsonArray(formData.get('specs')),
     images: parseJsonArray(formData.get('images')),
     initialStock: formData.get('initialStock'),
@@ -112,6 +121,10 @@ export async function saveProduct(
     featured: d.featured,
     iconKey: d.iconKey || null,
     gradient: d.gradient || null,
+    weightGrams: d.weightGrams,
+    heightCm: d.heightCm,
+    widthCm: d.widthCm,
+    lengthCm: d.lengthCm,
   }
 
   const isNew = !d.id
