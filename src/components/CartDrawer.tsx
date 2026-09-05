@@ -1,5 +1,6 @@
-// comandos no chat gpt...
-import { Link } from 'react-router-dom'
+'use client'
+
+import Link from 'next/link'
 import { Minus, Plus, ShoppingBag, Trash2, X } from 'lucide-react'
 import { useCart } from '../context/useCart'
 import { formatPrice } from '../lib/format'
@@ -49,7 +50,7 @@ export default function CartDrawer() {
             </div>
             <p className="text-sm text-neutral-500">Seu carrinho está vazio.</p>
             <Link
-              to="/"
+              href="/"
               onClick={closeCart}
               className="rounded-full bg-venus-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-venus-700"
             >
@@ -65,16 +66,20 @@ export default function CartDrawer() {
                   className="flex gap-3 border-b border-venus-50 py-4 first:pt-0 last:border-none"
                 >
                   <Link
-                    to={`/produto/${item.product.slug}`}
+                    href={`/produto/${item.product.slug}`}
                     onClick={closeCart}
                     className="shrink-0 overflow-hidden rounded-xl"
                   >
-                    <ProductVisual product={item.product} className="h-20 w-20" iconClassName="h-8 w-8" />
+                    <ProductVisual
+                      product={item.product}
+                      className="h-20 w-20"
+                      iconClassName="h-8 w-8"
+                    />
                   </Link>
 
                   <div className="flex flex-1 flex-col gap-1">
                     <Link
-                      to={`/produto/${item.product.slug}`}
+                      href={`/produto/${item.product.slug}`}
                       onClick={closeCart}
                       className="line-clamp-2 text-sm font-medium text-neutral-800 transition hover:text-venus-600"
                     >
@@ -137,14 +142,30 @@ export default function CartDrawer() {
                   <span className="text-xl font-bold text-venus-600">{formatPrice(totalPrice)}</span>
                 </div>
               </div>
-              <a
-                href={buildWhatsAppUrl(buildCartMessage(items, totalPrice))}
-                target="_blank"
-                rel="noopener noreferrer"
+              <Link
+                href="/checkout"
+                onClick={closeCart}
                 className="flex w-full items-center justify-center rounded-full bg-gradient-to-r from-venus-500 to-venus-600 py-3 text-sm font-bold text-white shadow-glow transition hover:brightness-110"
               >
-                Finalizar pedido no WhatsApp
-              </a>
+                Finalizar compra
+              </Link>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <Link
+                  href="/carrinho"
+                  onClick={closeCart}
+                  className="text-xs font-medium text-venus-700 underline-offset-2 hover:underline"
+                >
+                  Ver carrinho
+                </Link>
+                <a
+                  href={buildWhatsAppUrl(buildCartMessage(items, totalPrice))}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-venus-700 underline-offset-2 hover:underline"
+                >
+                  Finalizar no WhatsApp
+                </a>
+              </div>
             </div>
           </>
         )}

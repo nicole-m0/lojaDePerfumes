@@ -1,0 +1,201 @@
+// Máquina de estados do pagamento — função pura e testável.
+// Validada SEMPRE no servidor; o cliente nunca é fonte da verdade.
+//
+// Duas coisas diferentes usam PaymentStatus:
+// 1) Payment.status — transição MANUAL feita pelo admin (máquina de estados abaixo).
+// 2) Order.paymentStatus — NUNCA editado manualmente; é sempre recalculado a partir da
+//    soma dos Payments do pedido (ver `summarizePayments`). PARTIALLY_PAID só existe como
+//    resultado desse cálculo — não é destino válido de transição manual de um Payment
+//    individual (um pagamento isolado está pago ou não está; "parcial" é propriedade do
+//    pedido, que pode ter vários Payments).
+
+import type { PaymentStatus, PaymentMethod } from '@prisma/client'
+
+// Fonte única da verdade = enum `PaymentStatus` do schema Prisma. `import type` é apagado
+// na compilação, então isto NÃO puxa o client do Prisma para o bundle do navegador (este
+// módulo é usado também por componentes client). Se o enum mudar no schema, os `Record<
+// PaymentStatusValue, …>` abaixo passam a não compilar — o drift vira erro de tipo.
+export type PaymentStatusValue = PaymentStatus
+export type PaymentMethodValue = PaymentMethod
+
+export const PAYMENT_STATUS_LABEL: Record<PaymentStatusValue, string> = {
+  PENDING: 'Pendente',
+  PAID: 'Pago',
+  PARTIALLY_PAID: 'Parcialmente pago',
+  REFUNDED: 'Estornado',
+  CHARGEBACK: 'Chargeback',
+  FAILED: 'Falhou',
+  CANCELED: 'Cancelado',
+}
+
+// Transições manuais válidas de um Payment individual.
+// PARTIALLY_PAID nunca aparece aqui: é status calculado do Order, nunca de um Payment.
+// REFUNDED, CHARGEBACK e CANCELED são terminais.
+const TRANSITIONS: Record<PaymentStatusValue, PaymentStatusValue[]> = {
+  PENDING: ['PAID', 'FAILED', 'CANCELED'],
+  FAILED: ['PENDING', 'CANCELED'],
+  PAID: ['REFUNDED', 'CHARGEBACK'],
+  PARTIALLY_PAID: [],
+  REFUNDED: [],
+  CHARGEBACK: [],
+  CANCELED: [],
+}
+
+export function nextStatuses(from: PaymentStatusValue): PaymentStatusValue[] {
+  return TRANSITIONS[from] ?? []
+}
+
+export function canTransition(from: PaymentStatusValue, to: PaymentStatusValue): boolean {
+  return nextStatuses(from).includes(to)
+}
+
+export function isTerminalPaymentStatus(status: PaymentStatusValue): boolean {
+  return nextStatuses(status).length === 0
+}
+
+// ---------------------------------------------------------------------------
+// Cálculo do valor pago / restante e sincronização de Order.paymentStatus.
+// Puro: recebe os Payments já lidos do banco, nunca lê Prisma diretamente.
+// ---------------------------------------------------------------------------
+
+export interface PaymentForSync {
+  status: PaymentStatusValue
+  amountCents: number
+}
+
+export interface PaymentSummary {
+  /** Soma dos Payments atualmente PAID — "quanto já foi pago" (nunca conta REFUNDED/CHARGEBACK). */
+  paidCents: number
+  /** Soma dos Payments atualmente PENDING — registrados mas ainda não confirmados. */
+  pendingCents: number
+  refundedCents: number
+  chargebackCents: number
+  /** orderTotalCents - paidCents, nunca negativo. "Quanto o pedido ainda deve." */
+  remainingCents: number
+  /**
+   * orderTotalCents - paidCents - pendingCents, nunca negativo. "Quanto ainda dá para
+   * REGISTRAR" — impede acumular Payments PENDING que somados passem do total do pedido.
+   */
+  availableToRegisterCents: number
+  /** Order.paymentStatus sincronizado a partir dos Payments. */
+  status: PaymentStatusValue
+}
+
+/**
+ * Deriva o status de pagamento do PEDIDO a partir da lista de Payments.
+ * Nunca usa apenas a quantidade de Payments — sempre os valores (amountCents) dos que
+ * estão efetivamente PAID/REFUNDED/CHARGEBACK. Overpayment é impedido em outra camada
+ * (src/server/payments.ts); aqui `remainingCents` só protege contra ficar negativo.
+ */
+export function summarizePayments(
+  payments: PaymentForSync[],
+  orderTotalCents: number,
+): PaymentSummary {
+  let paidCents = 0
+  let pendingCents = 0
+  let refundedCents = 0
+  let chargebackCents = 0
+
+  for (const p of payments) {
+    if (p.status === 'PAID') paidCents += p.amountCents
+    else if (p.status === 'PENDING') pendingCents += p.amountCents
+    else if (p.status === 'REFUNDED') refundedCents += p.amountCents
+    else if (p.status === 'CHARGEBACK') chargebackCents += p.amountCents
+  }
+
+  // Dinheiro que já passou por PAID em algum momento, mesmo que depois tenha sido
+  // estornado/chargeback — usado para distinguir "nunca foi pago" de "foi pago e revertido".
+  const everCollectedCents = paidCents + refundedCents + chargebackCents
+  const remainingCents = Math.max(orderTotalCents - paidCents, 0)
+  const availableToRegisterCents = Math.max(orderTotalCents - paidCents - pendingCents, 0)
+
+  let status: PaymentStatusValue
+  if (chargebackCents > 0 && paidCents === 0 && everCollectedCents >= orderTotalCents) {
+    status = 'CHARGEBACK'
+  } else if (
+    refundedCents > 0 &&
+    paidCents === 0 &&
+    chargebackCents === 0 &&
+    everCollectedCents >= orderTotalCents
+  ) {
+    status = 'REFUNDED'
+  } else if (orderTotalCents > 0 && paidCents >= orderTotalCents) {
+    status = 'PAID'
+  } else if (paidCents > 0) {
+    status = 'PARTIALLY_PAID'
+  } else {
+    status = 'PENDING'
+  }
+
+  return {
+    paidCents,
+    pendingCents,
+    refundedCents,
+    chargebackCents,
+    remainingCents,
+    availableToRegisterCents,
+    status,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mercado Pago (Fase 4) — tradução do status do gateway para o nosso domínio.
+//
+// Isto NÃO é uma segunda máquina de estados: apenas converte o `status` cru de um
+// pagamento do Mercado Pago para um `PaymentStatusValue` que já existe. Se a transição
+// desse estado atual para o estado traduzido é ou não permitida continua sendo decidido
+// por `canTransition` dentro de `src/server/payments.ts`. Status não previstos (ex.:
+// `in_mediation`, valores futuros) retornam `null` — o chamador registra o evento e
+// NÃO altera nenhum estado interno.
+// ---------------------------------------------------------------------------
+
+/**
+ * Converte `payment.status` da API do Mercado Pago no nosso `PaymentStatusValue`.
+ * Função pura, sem I/O. Retorna `null` para qualquer status desconhecido/não mapeado.
+ */
+export function mapMercadoPagoStatus(mpStatus: string): PaymentStatusValue | null {
+  switch (mpStatus) {
+    case 'approved':
+      return 'PAID'
+    case 'pending':
+    case 'in_process':
+      return 'PENDING'
+    case 'rejected':
+    case 'cancelled':
+      return 'FAILED'
+    case 'refunded':
+      return 'REFUNDED'
+    case 'charged_back':
+      return 'CHARGEBACK'
+    default:
+      return null
+  }
+}
+
+/**
+ * Deriva o nosso `PaymentMethod` a partir dos campos `payment_type_id` /
+ * `payment_method_id` de um pagamento do Mercado Pago. Função pura.
+ * PIX é reconhecido pelo `payment_method_id === 'pix'` (o `payment_type_id`
+ * do PIX costuma vir como `bank_transfer`). Qualquer coisa não prevista cai em
+ * `OTHER` — nunca lança.
+ */
+export function mapMercadoPagoMethod(
+  paymentTypeId: string | null | undefined,
+  paymentMethodId?: string | null | undefined,
+): PaymentMethodValue {
+  if (paymentMethodId === 'pix') return 'PIX'
+  switch (paymentTypeId) {
+    case 'credit_card':
+      return 'CREDIT_CARD'
+    case 'debit_card':
+      return 'DEBIT_CARD'
+    case 'ticket':
+      return 'BOLETO'
+    case 'bank_transfer':
+      return 'PIX'
+    case 'account_money':
+      return 'BANK_TRANSFER'
+    default:
+      return 'OTHER'
+  }
+}

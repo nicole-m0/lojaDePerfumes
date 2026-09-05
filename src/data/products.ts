@@ -1,6 +1,24 @@
-import type { Product } from '../types'
+// Catálogo estático de origem — usado APENAS pelo seed (`prisma/seed.ts`).
+// A loja e o admin leem do banco. Não importe este arquivo em componentes.
 
-export const products: Product[] = [
+export interface SeedProduct {
+  id: string
+  slug: string
+  name: string
+  category: string
+  brand: string
+  price: number
+  originalPrice?: number
+  description: string
+  gradient: string
+  icon: string
+  rating: number
+  reviews: number
+  specs: { label: string; value: string }[]
+  featured?: boolean
+}
+
+export const products: SeedProduct[] = [
   {
     id: 'p01',
     slug: 'luna-absoluta-des-col-fem-75ml',
@@ -491,13 +509,3 @@ export const products: Product[] = [
 
 export const categories = Array.from(new Set(products.map((p) => p.category))).sort()
 export const brands = Array.from(new Set(products.map((p) => p.brand))).sort()
-
-export function getProductBySlug(slug: string): Product | undefined {
-  return products.find((p) => p.slug === slug)
-}
-
-export function getRelatedProducts(product: Product, limit = 4): Product[] {
-  return products
-    .filter((p) => p.id !== product.id && p.category === product.category)
-    .slice(0, limit)
-}

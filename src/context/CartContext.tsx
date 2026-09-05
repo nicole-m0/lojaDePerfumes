@@ -1,8 +1,11 @@
+'use client'
+
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { CartItem, Product } from '../types'
 import { CartContext, type CartContextValue, type CartNotification } from './cart-context'
 
-const STORAGE_KEY = 'venus-cart-v1'
+// v2: o produto passou a vir do banco (shape novo em src/types.ts).
+const STORAGE_KEY = 'venus-cart-v2'
 
 function loadInitialItems(): CartItem[] {
   if (typeof window === 'undefined') return []

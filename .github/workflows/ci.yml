@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      # Valores fictícios só para o build/typecheck do CI (nada conecta de verdade).
+      DATABASE_URL: postgresql://user:pass@localhost:5432/lojavenus
+      AUTH_SECRET: ci-placeholder-secret-please-override-in-prod
+      AUTH_TRUST_HOST: 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx prisma generate
+
+      - run: npm run lint
+
+      - run: npm test
+
+      # `next build` gera o next-env.d.ts e faz o type-check completo.
+      - run: npm run build
+
+      - run: npm run typecheck

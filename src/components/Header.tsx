@@ -1,27 +1,31 @@
+'use client'
+
 import { useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import Link from 'next/link'
+import Image from 'next/image'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Search, ShoppingCart } from 'lucide-react'
 import { useCart } from '../context/useCart'
 import venusFlower from '../assets/venus-flower.png'
 
 export default function Header() {
   const { totalItems, openCart } = useCart()
-  const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [query, setQuery] = useState(searchParams.get('q') ?? '')
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     const params = new URLSearchParams()
     if (query.trim()) params.set('q', query.trim())
-    navigate(`/${params.toString() ? `?${params.toString()}` : ''}`)
+    router.push(`/${params.toString() ? `?${params.toString()}` : ''}`)
   }
 
   return (
     <header className="sticky top-0 z-40 border-b border-venus-100 bg-white/80 backdrop-blur-lg">
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:gap-6 sm:px-6">
-        <Link to="/" className="flex shrink-0 items-center gap-1.5">
-          <img src={venusFlower} alt="" className="h-9 w-auto drop-shadow-sm sm:h-11" />
+        <Link href="/" className="flex shrink-0 items-center gap-1.5">
+          <Image src={venusFlower} alt="" className="h-9 w-auto drop-shadow-sm sm:h-11" priority />
           <span className="font-script text-2xl leading-none text-venus-600 sm:text-3xl">
             Vênus
           </span>
