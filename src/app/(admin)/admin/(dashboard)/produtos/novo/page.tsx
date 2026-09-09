@@ -15,6 +15,7 @@ const EMPTY: ProductFormValues = {
   brandId: '',
   priceReais: '',
   compareAtPriceReais: '',
+  costReais: '',
   status: 'DRAFT',
   featured: false,
   iconKey: '',

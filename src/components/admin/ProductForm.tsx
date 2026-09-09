@@ -24,6 +24,8 @@ export interface ProductFormValues {
   brandId: string
   priceReais: string
   compareAtPriceReais: string
+  /** Custo do produto (Fase 6 — financeiro). String vazia = custo NÃO informado (nunca "0"). */
+  costReais: string
   status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED'
   featured: boolean
   iconKey: string
@@ -155,6 +157,22 @@ export default function ProductForm({
             placeholder="185,90"
             className="mt-1.5"
           />
+        </div>
+
+        <div>
+          <Label htmlFor="costReais">Custo (opcional)</Label>
+          <Input
+            id="costReais"
+            name="costReais"
+            defaultValue={initialValues.costReais}
+            inputMode="decimal"
+            placeholder="60,00"
+            className="mt-1.5"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            Deixe em branco se o custo ainda não for conhecido — usado no Financeiro para
+            calcular margem. Não preencha com 0 a menos que o custo real seja zero.
+          </p>
         </div>
 
         <div>

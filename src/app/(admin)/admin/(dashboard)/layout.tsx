@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { Boxes, LayoutDashboard, LogOut, Package, ShoppingCart, Tags } from 'lucide-react'
+import { Boxes, LayoutDashboard, LogOut, Package, ShoppingCart, Tags, Wallet } from 'lucide-react'
 import { auth, signOut } from '@/auth'
 import { Button } from '@/components/ui/button'
 
@@ -16,9 +16,10 @@ const NAV_LINKS = [
   { href: '/admin/categorias', label: 'Categorias & Marcas', icon: Tags },
   { href: '/admin/estoque', label: 'Estoque', icon: Boxes },
   { href: '/admin/pedidos', label: 'Pedidos', icon: ShoppingCart },
+  { href: '/admin/financeiro', label: 'Financeiro', icon: Wallet },
 ]
 
-const NAV_SOON = ['Clientes', 'Entregas', 'Financeiro', 'Configurações']
+const NAV_SOON = ['Clientes', 'Entregas', 'Configurações']
 
 export default async function AdminDashboardLayout({
   children,

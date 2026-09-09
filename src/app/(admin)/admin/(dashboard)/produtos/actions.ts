@@ -31,6 +31,8 @@ const productSchema = z.object({
   brandId: z.string().min(1, 'Selecione a marca.'),
   priceReais: z.string().min(1, 'Informe o preço.'),
   compareAtPriceReais: z.string().optional(),
+  // Custo do produto (Fase 6). Ausente/vazio = custo NÃO informado — nunca vira 0.
+  costReais: z.string().optional(),
   status: z.enum(['DRAFT', 'ACTIVE', 'ARCHIVED']),
   featured: z.boolean(),
   iconKey: z.string().optional(),
@@ -84,6 +86,7 @@ export async function saveProduct(
     brandId: formData.get('brandId'),
     priceReais: formData.get('priceReais'),
     compareAtPriceReais: (formData.get('compareAtPriceReais') as string) || undefined,
+    costReais: (formData.get('costReais') as string) || undefined,
     status: formData.get('status'),
     featured: formData.get('featured') === 'on',
     iconKey: (formData.get('iconKey') as string) || undefined,
@@ -107,6 +110,14 @@ export async function saveProduct(
   if (priceCents <= 0) return { error: 'Preço inválido.' }
   const compareAtPriceCents = d.compareAtPriceReais ? reaisToCents(d.compareAtPriceReais) : null
 
+  // Custo (Fase 6): campo vazio = null ("não informado"), NUNCA 0. Só valida quando
+  // preenchido — 0 explícito é aceito (produto com custo real zero é um caso legítimo).
+  let costCents: number | null = null
+  if (d.costReais && d.costReais.trim() !== '') {
+    costCents = reaisToCents(d.costReais)
+    if (costCents < 0) return { error: 'Custo inválido.' }
+  }
+
   const slug = await uniqueSlug(d.slug ? slugify(d.slug) : slugify(d.name), d.id)
 
   const scalar = {
@@ -117,6 +128,7 @@ export async function saveProduct(
     brandId: d.brandId,
     priceCents,
     compareAtPriceCents,
+    costCents,
     status: d.status,
     featured: d.featured,
     iconKey: d.iconKey || null,

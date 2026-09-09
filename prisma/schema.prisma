@@ -3,7 +3,8 @@
 // Fase 1: catálogo (categorias, marcas, produtos, imagens, especificações).
 // Fase 4: pagamento (Mercado Pago Checkout Pro) — campos de gateway em Payment.
 // Fase 5: frete (Melhor Envio) — dados físicos em Product + snapshot ShippingQuote.
-// Pedidos, estoque, financeiro e fiscal completam-se nas fases seguintes.
+// Fase 6: financeiro básico — Product.costCents + model Expense (despesas avulsas).
+// Fiscal (NF-e) completa-se em fase futura.
 
 generator client {
   provider = "prisma-client-js"
@@ -131,6 +132,13 @@ model Product {
   // Dinheiro sempre em centavos (inteiro). A UI converte para reais na borda.
   priceCents          Int
   compareAtPriceCents Int?
+
+  // Custo do produto (Fase 6 — financeiro), em centavos. Opcional e SEM default:
+  // `null` significa "custo não informado" e é semanticamente diferente de "custo
+  // zero" — nunca tratar um como o outro. O cálculo de margem bruta (financeiro)
+  // exclui explicitamente os itens sem custo em vez de assumir zero, para não
+  // inflar a margem de produtos sem custo cadastrado.
+  costCents Int?
 
   // Estoque: saldo em cache. O livro-razão (histórico) fica em StockMovement.
   // Sem baixa automática nesta etapa — apenas o campo.
@@ -558,6 +566,39 @@ model StockMovement {
   @@index([orderId])
   @@index([type])
   @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Financeiro (Fase 6 — básico): despesas operacionais avulsas.
+// Receita/estornos são derivados de Order/Payment (já existentes); custo de
+// produto vendido vem de Product.costCents. Nenhum model novo para isso.
+// SEM recorrência, SEM contas a pagar/receber, SEM conciliação bancária.
+// SEM audit trail dedicado: Expense é dado cadastral simples (mesmo tratamento
+// de Category/Brand/Product, que também não têm log de eventos) — createdAt/
+// updatedAt bastam.
+// ---------------------------------------------------------------------------
+
+model Expense {
+  id String @id @default(cuid())
+
+  description String
+  // Texto livre (sem enum): evita migração toda vez que uma categoria nova
+  // surgir; a UI sugere valores comuns via datalist, sem restringir a entrada.
+  category String
+
+  // Sempre em centavos (inteiro), como todo valor monetário no schema. Deve
+  // ser sempre > 0 — validado na camada de serviço (src/server/expenses.ts).
+  amountCents Int
+
+  // Data em que a despesa ocorreu (para relatório por período) — pode diferir
+  // de `createdAt` (quando o registro foi digitado no sistema).
+  occurredAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([occurredAt])
+  @@index([category])
 }
 
 // --- Histórico do pedido (audit trail leve) -------------------------

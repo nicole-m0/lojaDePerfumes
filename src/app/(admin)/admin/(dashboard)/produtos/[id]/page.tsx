@@ -43,6 +43,7 @@ export default async function EditProductPage({ params }: PageProps) {
     brandId: product.brandId,
     priceReais: reaisString(product.priceCents),
     compareAtPriceReais: reaisString(product.compareAtPriceCents),
+    costReais: reaisString(product.costCents),
     status: product.status,
     featured: product.featured,
     stockOnHand: product.stockOnHand,
