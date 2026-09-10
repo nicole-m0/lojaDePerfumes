@@ -4,6 +4,8 @@
 // Fase 4: pagamento (Mercado Pago Checkout Pro) — campos de gateway em Payment.
 // Fase 5: frete (Melhor Envio) — dados físicos em Product + snapshot ShippingQuote.
 // Fase 6: financeiro básico — Product.costCents + model Expense (despesas avulsas).
+// Fase 7 (etapa 1 — somente schema): notificações via WhatsApp Cloud API —
+// model WhatsAppMessage (histórico/idempotência), sem client/webhook/serviço ainda.
 // Fiscal (NF-e) completa-se em fase futura.
 
 generator client {
@@ -349,7 +351,8 @@ model Order {
   invoices      Invoice[]
   events        OrderEvent[]
 
-  stockMovements StockMovement[]
+  stockMovements   StockMovement[]
+  whatsappMessages WhatsAppMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -620,5 +623,60 @@ model OrderEvent {
   createdAt DateTime @default(now())
 
   @@index([orderId])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp Cloud API (Fase 7 — etapa 1: somente schema).
+// Histórico + idempotência das notificações transacionais enviadas por
+// WhatsApp (confirmação/envio/entrega/cancelamento do pedido). Modelo
+// separado de OrderEvent (que é o audit trail de status): aqui é o log de
+// UMA integração externa específica, no mesmo espírito de Payment/Invoice.
+// SEM client, SEM webhook, SEM serviço de envio nesta etapa — só a tabela.
+// ---------------------------------------------------------------------------
+
+enum WhatsAppMessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+model WhatsAppMessage {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // Snapshot do telefone de destino (E.164) no momento do envio — nunca lê
+  // Order.customerPhone/Customer.phone ao exibir o histórico depois.
+  phone String
+
+  // Nome do template aprovado na Meta usado nesta mensagem (ex.: "pedido_confirmado").
+  templateName String
+
+  status WhatsAppMessageStatus @default(PENDING)
+
+  // Id da mensagem no WhatsApp Cloud API ("wamid..."), preenchido quando a Meta
+  // aceita o envio. Nulo até lá (falha antes do envio nunca gera wamid). É a
+  // chave de idempotência dos callbacks de status recebidos pelo webhook —
+  // únicos por mensagem; NULLs não colidem entre si no Postgres.
+  providerMessageId String? @unique
+
+  // Motivo da falha (no envio ou em callback "failed" da Meta), quando FAILED.
+  errorMessage String?
+
+  // Timestamps de cada transição de status reportada (envio local + callbacks
+  // da Meta via webhook). Todos opcionais: preenchidos conforme o status avança.
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
+  failedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([status])
   @@index([createdAt])
 }
