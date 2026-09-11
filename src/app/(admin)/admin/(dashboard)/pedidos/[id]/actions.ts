@@ -417,14 +417,18 @@ export async function upsertShipment(
   const { orderId, status, carrier, trackingCode, estimatedAt, shippedAt, deliveredAt, notes } =
     parsed.data
 
+  let orderNumber: number | undefined
+  let customerPhone: string | null | undefined
+  let prevStatus: string | null = null
+
   try {
     await prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: { id: orderId },
-        select: { id: true, shipment: { select: { status: true } } },
+        select: { number: true, customerPhone: true, shipment: { select: { status: true } } },
       })
       if (!order) throw new ActionError('Pedido não encontrado.')
-      const prevStatus = order.shipment?.status ?? null
+      prevStatus = order.shipment?.status ?? null
 
       const data = { status, carrier, trackingCode, estimatedAt, shippedAt, deliveredAt, notes }
       await tx.shipment.upsert({
@@ -451,6 +455,9 @@ export async function upsertShipment(
           userId: staff.id,
         },
       })
+
+      orderNumber = order.number
+      customerPhone = order.customerPhone
     })
   } catch (err) {
     if (err instanceof ActionError) return { error: err.message }
@@ -459,6 +466,22 @@ export async function upsertShipment(
   }
 
   revalidateOrder(orderId)
+
+  // Best-effort, depois que a transação já terminou com sucesso: uma falha aqui
+  // nunca pode virar erro desta action. Só notifica na transição REAL para
+  // IN_TRANSIT — reaproveita "pedido_enviado" (mesmo template de Order.status
+  // SHIPPED); a deduplicação em sendOrderWhatsAppNotification evita reenvio se
+  // o pedido já tiver sido notificado por esse mesmo template.
+  if (prevStatus !== 'IN_TRANSIT' && status === 'IN_TRANSIT' && orderNumber !== undefined) {
+    await sendOrderWhatsAppNotification({
+      orderId,
+      phone: customerPhone,
+      templateName: 'pedido_enviado',
+      languageCode: WHATSAPP_LANGUAGE_CODE,
+      bodyParams: [String(orderNumber)],
+    })
+  }
+
   return { ok: true }
 }
 
