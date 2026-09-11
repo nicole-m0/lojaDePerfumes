@@ -4,6 +4,7 @@ import {
   canTransition,
   forwardStatuses,
   nextStatuses,
+  whatsAppTemplateForStatus,
 } from './order-status'
 
 describe('máquina de estados do pedido', () => {
@@ -39,5 +40,20 @@ describe('máquina de estados do pedido', () => {
     expect(forwardStatuses('PROCESSING')).toEqual(['SHIPPED'])
     expect(forwardStatuses('SHIPPED')).toEqual(['DELIVERED'])
     expect(forwardStatuses('DELIVERED')).toEqual([])
+  })
+})
+
+describe('whatsAppTemplateForStatus', () => {
+  it('mapeia CONFIRMED/SHIPPED/DELIVERED/CANCELED para o template correspondente', () => {
+    expect(whatsAppTemplateForStatus('CONFIRMED')).toBe('pedido_confirmado')
+    expect(whatsAppTemplateForStatus('SHIPPED')).toBe('pedido_enviado')
+    expect(whatsAppTemplateForStatus('DELIVERED')).toBe('pedido_entregue')
+    expect(whatsAppTemplateForStatus('CANCELED')).toBe('pedido_cancelado')
+  })
+
+  it('não notifica DRAFT/PENDING/PROCESSING', () => {
+    expect(whatsAppTemplateForStatus('DRAFT')).toBeNull()
+    expect(whatsAppTemplateForStatus('PENDING')).toBeNull()
+    expect(whatsAppTemplateForStatus('PROCESSING')).toBeNull()
   })
 })

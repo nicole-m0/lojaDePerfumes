@@ -4,7 +4,12 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireStaff } from '@/server/guard'
-import { canCancel, canTransition, type OrderStatusValue } from '@/lib/order-status'
+import {
+  canCancel,
+  canTransition,
+  whatsAppTemplateForStatus,
+  type OrderStatusValue,
+} from '@/lib/order-status'
 import { decrementStockForOrder, restoreStockForOrder, InsufficientStockError } from '@/server/stock'
 import {
   createManualPayment,
@@ -13,7 +18,11 @@ import {
 } from '@/server/payments'
 import { isMercadoPagoConfigured } from '@/lib/mercadopago'
 import { reconcileOrderWithMercadoPago } from '@/server/mercadopago'
+import { sendOrderWhatsAppNotification } from '@/server/whatsapp'
 import { reaisToCents } from '@/lib/format'
+
+/** Código de idioma do template cadastrado na Meta — mesmo valor para todos os templates desta etapa. */
+const WHATSAPP_LANGUAGE_CODE = 'pt_BR'
 
 export interface OrderActionState {
   error?: string
@@ -52,6 +61,9 @@ export async function updateOrderStatus(
   if (!parsed.success) return { error: 'Dados inválidos.' }
   const { orderId, toStatus, note } = parsed.data
 
+  let orderNumber: number | undefined
+  let customerPhone: string | null | undefined
+
   try {
     await prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
@@ -59,6 +71,7 @@ export async function updateOrderStatus(
         select: {
           status: true,
           number: true,
+          customerPhone: true,
           items: { select: { productId: true, productName: true, quantity: true } },
         },
       })
@@ -97,6 +110,9 @@ export async function updateOrderStatus(
           userId: staff.id,
         },
       })
+
+      orderNumber = order.number
+      customerPhone = order.customerPhone
     })
   } catch (err) {
     if (err instanceof ActionError) return { error: err.message }
@@ -105,6 +121,20 @@ export async function updateOrderStatus(
   }
 
   revalidateOrder(orderId)
+
+  // Best-effort, depois que a transação já terminou com sucesso: uma falha aqui
+  // nunca pode virar erro desta action (ver doc de sendOrderWhatsAppNotification).
+  const templateName = whatsAppTemplateForStatus(toStatus)
+  if (templateName && orderNumber !== undefined) {
+    await sendOrderWhatsAppNotification({
+      orderId,
+      phone: customerPhone,
+      templateName,
+      languageCode: WHATSAPP_LANGUAGE_CODE,
+      bodyParams: [String(orderNumber)],
+    })
+  }
+
   return { ok: true }
 }
 
@@ -129,6 +159,9 @@ export async function cancelOrder(
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' }
   const { orderId, reason } = parsed.data
 
+  let orderNumber: number | undefined
+  let customerPhone: string | null | undefined
+
   try {
     await prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
@@ -136,6 +169,7 @@ export async function cancelOrder(
         select: {
           status: true,
           number: true,
+          customerPhone: true,
           items: { select: { productId: true, productName: true, quantity: true } },
         },
       })
@@ -166,6 +200,9 @@ export async function cancelOrder(
           userId: staff.id,
         },
       })
+
+      orderNumber = order.number
+      customerPhone = order.customerPhone
     })
   } catch (err) {
     if (err instanceof ActionError) return { error: err.message }
@@ -174,6 +211,20 @@ export async function cancelOrder(
   }
 
   revalidateOrder(orderId)
+
+  // Best-effort, depois que a transação já terminou com sucesso: uma falha aqui
+  // nunca pode virar erro desta action (ver doc de sendOrderWhatsAppNotification).
+  const templateName = whatsAppTemplateForStatus('CANCELED')
+  if (templateName && orderNumber !== undefined) {
+    await sendOrderWhatsAppNotification({
+      orderId,
+      phone: customerPhone,
+      templateName,
+      languageCode: WHATSAPP_LANGUAGE_CODE,
+      bodyParams: [String(orderNumber)],
+    })
+  }
+
   return { ok: true }
 }
 

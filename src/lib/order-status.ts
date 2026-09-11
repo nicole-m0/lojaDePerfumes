@@ -48,3 +48,21 @@ export function forwardStatuses(from: OrderStatusValue): OrderStatusValue[] {
 export function canCancel(from: OrderStatusValue): boolean {
   return canTransition(from, 'CANCELED')
 }
+
+// --- Notificação WhatsApp por status (Etapa 5) ----------------------------
+// Mapeia o status do pedido para o nome do template já aprovado na Meta.
+// DRAFT/PENDING/PROCESSING não notificam (nenhuma entrada = null). Só decide
+// QUAL template corresponde a um status — o QUANDO chamar continua em quem
+// orquestra a transição (actions de Order), e o COMO enviar é sempre de
+// src/server/whatsapp.ts.
+
+const ORDER_STATUS_WHATSAPP_TEMPLATE: Partial<Record<OrderStatusValue, string>> = {
+  CONFIRMED: 'pedido_confirmado',
+  SHIPPED: 'pedido_enviado',
+  DELIVERED: 'pedido_entregue',
+  CANCELED: 'pedido_cancelado',
+}
+
+export function whatsAppTemplateForStatus(status: OrderStatusValue): string | null {
+  return ORDER_STATUS_WHATSAPP_TEMPLATE[status] ?? null
+}
