@@ -1,6 +1,7 @@
-# Loja Vênus
+# Bella&Cheirosa
 
-Loja virtual de perfumes, cosméticos e presentes femininos.
+E-commerce **demonstrativo** de perfumaria — projeto de portfólio. Produtos, marcas e
+preços exibidos na demonstração são fictícios e nenhum pedido é entregue.
 
 **Stack:** Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui · Prisma · PostgreSQL · Auth.js (NextAuth v5) · Cloudinary.
 
@@ -8,6 +9,24 @@ Loja virtual de perfumes, cosméticos e presentes femininos.
 > **Fase 1** — catálogo no banco (categorias, marcas, produtos, imagens, especificações),
 > CRUD no painel e upload de imagens via Cloudinary. A loja pública lê do banco e
 > reflete os filtros na URL; sem imagem real, cai no degradê + ícone da SPA original.
+
+## Identidade visual
+
+Identidade original, criada para o projeto (sem logotipos, fotos ou textos de terceiros).
+
+| Elemento | Definição |
+|---|---|
+| Conceito | "Ateliê de perfumaria": sofisticado, feminino e comercial, sem excesso decorativo |
+| Símbolo | Frasco geométrico com brilho de quatro pontas — `src/components/brand/Logo.tsx` |
+| Logotipo | "Bella&Cheirosa" em Cormorant Garamond, com o `&` em itálico champanhe |
+| Favicon / ícone iOS | `src/app/icon.svg` e `src/app/apple-icon.tsx` (gerado no build) |
+| Cor de marca | Bordô-rosé — tokens `brand-50…900` (primária `brand-600` `#92425f`) |
+| Acento | Champanhe — tokens `champagne-50…700` (uso pontual) |
+| Neutros | Marfim `ivory` `#fbf8f5` (fundo) e tinta `ink` `#2a1f24` (texto) |
+| Tipografia | Cormorant Garamond (títulos `h1`/`h2`, marca) + Manrope (interface) — ambas OFL, via `next/font` |
+
+Os tokens ficam em `src/app/globals.css` (`@theme`). O painel administrativo (shadcn/ui) usa as
+mesmas cores pelas variáveis `--primary`, `--accent`, `--ring` etc. do mesmo arquivo.
 
 ## Pré-requisitos
 
@@ -92,6 +111,7 @@ e a loja usa o degradê + ícone como fallback. Para habilitar upload:
 
 ## Antes de publicar
 
-- Número de WhatsApp e nome da loja: variáveis `NEXT_PUBLIC_STORE_*` (vão para a tabela `Setting` numa próxima fase).
+- Nome, slogan e WhatsApp da loja: variáveis `NEXT_PUBLIC_STORE_*`. **A variável tem prioridade sobre o
+  padrão do código** — confira `NEXT_PUBLIC_STORE_NAME="Bella&Cheirosa"` no `.env` e na Vercel.
 - Catálogo: gerenciado no painel (`/admin/produtos`). `src/data/products.ts` é só a carga inicial do seed.
-- Logo/ícones: `public/favicon*.png`.
+- Logo/ícones: `src/components/brand/Logo.tsx`, `src/app/icon.svg`, `src/app/apple-icon.tsx`.

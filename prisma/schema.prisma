@@ -1,4 +1,4 @@
-// Loja Vênus — schema Prisma
+// Bella&Cheirosa — schema Prisma
 // Fase 0: autenticação (Auth.js) + configurações da loja.
 // Fase 1: catálogo (categorias, marcas, produtos, imagens, especificações).
 // Fase 4: pagamento (Mercado Pago Checkout Pro) — campos de gateway em Payment.

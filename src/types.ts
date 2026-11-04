@@ -24,6 +24,12 @@ export interface Product {
   reviews: number
   specs: ProductSpec[]
   featured?: boolean
+  /**
+   * Unidades que podem ser compradas agora (estoque, limitado a 99). 0 = esgotado.
+   * Atenção: carrinhos salvos no navegador antes desta versão não têm o campo —
+   * o código do carrinho trata `undefined` como "desconhecido" (o servidor decide).
+   */
+  availableQuantity: number
 }
 
 export interface CartItem {

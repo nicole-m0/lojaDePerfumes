@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { randomUUID } from 'node:crypto'
 import CheckoutForm from '@/components/CheckoutForm'
+import { Container, Eyebrow } from '@/components/shop/ui'
+import { isMercadoPagoConfigured } from '@/lib/mercadopago'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Checkout' }
@@ -10,9 +12,12 @@ export default function CheckoutPage() {
   const nonce = randomUUID()
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-      <h1 className="mb-6 text-2xl font-bold text-neutral-800">Finalizar compra</h1>
-      <CheckoutForm nonce={nonce} />
+    <main className="flex-1 py-12 sm:py-16">
+      <Container>
+        <Eyebrow>Checkout</Eyebrow>
+        <h1 className="mb-10 mt-3 text-5xl font-medium text-ink sm:text-6xl">Finalizar compra</h1>
+        <CheckoutForm nonce={nonce} onlinePayment={isMercadoPagoConfigured()} />
+      </Container>
     </main>
   )
 }

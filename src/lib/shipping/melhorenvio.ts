@@ -40,7 +40,7 @@ export function melhorEnvioBaseUrl(): string {
  * dados pessoais no código; cai num rótulo neutro se não definido.
  */
 function melhorEnvioUserAgent(): string {
-  return process.env.MELHORENVIO_USER_AGENT || 'Loja Venus'
+  return process.env.MELHORENVIO_USER_AGENT || 'Bella&Cheirosa (loja demonstrativa)'
 }
 
 function melhorEnvioServices(): string {

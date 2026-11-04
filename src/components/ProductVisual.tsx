@@ -1,63 +1,106 @@
 import Image from 'next/image'
-import {
-  SprayCan,
-  Gift,
-  Palette,
-  Droplets,
-  SoapDispenserDroplet,
-  Handbag,
-  Sun,
-} from 'lucide-react'
 import type { Product } from '../types'
 
-const ICONS: Record<string, typeof SprayCan> = {
-  perfume: SprayCan,
-  gift: Gift,
-  lipstick: Palette,
-  lotion: Droplets,
-  soap: SoapDispenserDroplet,
-  bag: Handbag,
-  sun: Sun,
-  spray: SprayCan,
-}
+// Imagem do produto.
+//
+// - Com foto aprovada (`product.imageUrl`): a foto, em `object-cover` sobre areia.
+// - Sem foto: SUBSTITUTO TIPOGRÁFICO — uma "etiqueta" com a marca e o nome do
+//   próprio produto. É deliberadamente honesto (não finge ser uma foto) e cada
+//   produto tem o seu, então nunca há uma mesma imagem genérica representando
+//   vários produtos. Os campos `gradient`/`icon` do banco não são mais usados
+//   na loja (os dados continuam intactos).
 
-const DEFAULT_GRADIENT = 'from-venus-300 via-venus-200 to-venus-100'
+type Variant = 'thumb' | 'card' | 'feature' | 'detail'
 
 interface ProductVisualProps {
-  product: Product
+  product: Pick<Product, 'name' | 'brand' | 'imageUrl'>
   className?: string
-  iconClassName?: string
+  variant?: Variant
+  /** Valor do atributo `sizes` da imagem (layout responsivo). */
+  sizes?: string
+  priority?: boolean
+}
+
+const DEFAULT_SIZES: Record<Variant, string> = {
+  thumb: '96px',
+  card: '(max-width: 640px) 50vw, (max-width: 1280px) 33vw, 320px',
+  feature: '(max-width: 1024px) 100vw, 50vw',
+  detail: '(max-width: 1024px) 100vw, 58vw',
+}
+
+/** Iniciais das duas primeiras palavras significativas do nome (para miniaturas). */
+export function productMonogram(name: string): string {
+  const words = name
+    .split(/\s+/)
+    .map((w) => w.replace(/[^\p{L}\p{N}]/gu, ''))
+    .filter((w) => w.length > 1)
+  const letters = words.slice(0, 2).map((w) => w[0]!.toUpperCase())
+  return letters.join('') || '·'
 }
 
 export default function ProductVisual({
   product,
   className = '',
-  iconClassName = '',
+  variant = 'card',
+  sizes,
+  priority = false,
 }: ProductVisualProps) {
   if (product.imageUrl) {
     return (
-      <div className={`relative overflow-hidden bg-venus-50 ${className}`}>
+      <div className={`relative overflow-hidden bg-sand-100 ${className}`}>
         <Image
           src={product.imageUrl}
           alt={product.name}
           fill
-          sizes="(max-width: 640px) 50vw, (max-width: 1280px) 33vw, 300px"
+          priority={priority}
+          sizes={sizes ?? DEFAULT_SIZES[variant]}
           className="object-cover"
         />
       </div>
     )
   }
 
-  const Icon = ICONS[product.icon ?? ''] ?? SprayCan
-  const gradient = product.gradient ?? DEFAULT_GRADIENT
+  if (variant === 'thumb') {
+    return (
+      <div
+        className={`relative flex items-center justify-center overflow-hidden bg-sand-100 ${className}`}
+        role="img"
+        aria-label={`${product.name} — imagem em produção`}
+      >
+        <span className="font-display text-xl font-medium italic text-ink-soft">
+          {productMonogram(product.name)}
+        </span>
+      </div>
+    )
+  }
+
+  const large = variant === 'detail' || variant === 'feature'
 
   return (
     <div
-      className={`relative flex items-center justify-center overflow-hidden bg-gradient-to-br ${gradient} ${className}`}
+      className={`relative flex items-center justify-center overflow-hidden bg-sand-100 ${className}`}
+      role="img"
+      aria-label={`${product.name} — imagem em produção`}
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.55),transparent_55%)]" />
-      <div className="absolute -bottom-6 -right-6 h-24 w-24 rounded-full bg-white/20 blur-xl" />
-      <Icon className={`relative drop-shadow-sm text-white/90 ${iconClassName}`} strokeWidth={1.5} />
+      {/* Etiqueta: moldura fina, marca, nome e um filete champanhe. */}
+      <div
+        className={`flex flex-col items-center justify-center border border-ink/10 bg-ivory text-center ${
+          large ? 'h-[62%] w-[56%] gap-4 px-6' : 'h-[64%] w-[66%] gap-2 px-3'
+        }`}
+      >
+        <span className={`eyebrow text-ink-soft ${large ? '' : 'text-[0.55rem]'}`}>
+          {product.brand}
+        </span>
+        <span
+          className={`font-display font-medium italic leading-tight text-ink ${
+            large ? 'text-3xl sm:text-4xl' : 'line-clamp-3 text-base sm:text-lg'
+          }`}
+        >
+          {product.name}
+        </span>
+        <span className={`h-px bg-champagne-400 ${large ? 'w-12' : 'w-8'}`} />
+        {large && <span className="eyebrow text-ink-soft">Imagem em produção</span>}
+      </div>
     </div>
   )
 }

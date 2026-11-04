@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import LoginForm from '@/components/admin/LoginForm'
+import Logo from '@/components/brand/Logo'
 
 export const metadata: Metadata = {
   title: 'Entrar',
@@ -9,10 +10,11 @@ export const metadata: Metadata = {
 
 export default function AdminLoginPage() {
   return (
-    <div className="flex min-h-svh items-center justify-center bg-muted/40 p-4">
+    <div className="bg-mesh flex min-h-svh items-center justify-center p-4">
       <Card className="w-full max-w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-xl">Painel Loja Vênus</CardTitle>
+        <CardHeader className="items-center text-center">
+          <Logo size="md" className="mb-2 justify-center" />
+          <CardTitle className="text-xl">Painel administrativo</CardTitle>
           <CardDescription>Acesso restrito à equipe</CardDescription>
         </CardHeader>
         <CardContent>

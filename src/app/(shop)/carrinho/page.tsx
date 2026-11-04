@@ -1,13 +1,17 @@
 import type { Metadata } from 'next'
 import CartView from '@/components/CartView'
+import { Container, Eyebrow } from '@/components/shop/ui'
 
-export const metadata: Metadata = { title: 'Carrinho' }
+export const metadata: Metadata = { title: 'Sacola' }
 
 export default function CarrinhoPage() {
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-      <h1 className="mb-6 text-2xl font-bold text-neutral-800">Seu carrinho</h1>
-      <CartView />
+    <main className="flex-1 py-12 sm:py-16">
+      <Container>
+        <Eyebrow>Sua seleção</Eyebrow>
+        <h1 className="mb-10 mt-3 text-5xl font-medium text-ink sm:text-6xl">Sacola</h1>
+        <CartView />
+      </Container>
     </main>
   )
 }

@@ -2,6 +2,7 @@ import 'server-only'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { centsToReais } from '@/lib/format'
+import { maxPurchasableQuantity } from '@/lib/stock'
 import type { Product } from '@/types'
 
 const shopInclude = {
@@ -31,6 +32,7 @@ function toShopProduct(row: ShopProductRow): Product {
     reviews: row.ratingCount,
     specs: row.specs.map((s) => ({ label: s.label, value: s.value })),
     featured: row.featured,
+    availableQuantity: maxPurchasableQuantity(row.stockOnHand),
   }
 }
 
@@ -178,6 +180,8 @@ export async function getProductsForCart(ids: string[]) {
       compareAtPriceCents: true,
       iconKey: true,
       gradient: true,
+      // Saldo para sinalizar esgotado/insuficiente no carrinho (Etapa A).
+      stockOnHand: true,
       // Dados físicos para a cotação de frete (Fase 5).
       weightGrams: true,
       heightCm: true,

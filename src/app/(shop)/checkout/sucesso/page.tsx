@@ -1,29 +1,29 @@
 import type { Metadata } from 'next'
 import { getOrderConfirmation } from '@/server/orders'
+import { isMercadoPagoConfigured } from '@/lib/mercadopago'
 import CheckoutSuccess from '@/components/CheckoutSuccess'
 
 export const dynamic = 'force-dynamic'
-export const metadata: Metadata = { title: 'Pedido recebido' }
+export const metadata: Metadata = {
+  title: 'Pedido recebido',
+  // A URL carrega um token de acesso ao resumo do pedido — não indexar nem vazar via Referer.
+  robots: { index: false, follow: false },
+  referrer: 'no-referrer',
+}
 
 interface PageProps {
-  searchParams: Promise<{ pedido?: string }>
+  searchParams: Promise<{ pedido?: string; token?: string }>
 }
 
 export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
-  const { pedido } = await searchParams
+  const { pedido, token } = await searchParams
   const parsed = Number(pedido)
   const number = Number.isInteger(parsed) && parsed > 0 ? parsed : null
 
-  const order = number ? await getOrderConfirmation(number).catch(() => null) : null
+  // Só mostra dados do pedido com token válido (ver getOrderConfirmation).
+  // Retorno do cliente a esta página NÃO confirma pagamento: o status exibido é
+  // o que está no banco, atualizado apenas pelo webhook/reconsulta/admin.
+  const order = number ? await getOrderConfirmation(number, token).catch(() => null) : null
 
-  return (
-    <main className="mx-auto max-w-5xl px-4 py-12 sm:px-6">
-      <CheckoutSuccess
-        orderNumber={order?.number ?? number}
-        totalCents={order?.totalCents ?? null}
-        paymentStatus={order?.paymentStatus ?? null}
-        found={Boolean(order)}
-      />
-    </main>
-  )
+  return <CheckoutSuccess order={order} onlinePayment={isMercadoPagoConfigured()} />
 }

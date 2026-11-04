@@ -13,9 +13,5 @@ export default async function CheckoutPendingPage({ searchParams }: PageProps) {
   const parsed = Number(pedido)
   const number = Number.isInteger(parsed) && parsed > 0 ? parsed : null
 
-  return (
-    <main className="mx-auto max-w-5xl px-4 py-12 sm:px-6">
-      <CheckoutReturnNotice variant="pending" orderNumber={number} />
-    </main>
-  )
+  return <CheckoutReturnNotice variant="pending" orderNumber={number} />
 }

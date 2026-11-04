@@ -1,4 +1,4 @@
-import { STORE_WHATSAPP_NUMBER } from '../config/store'
+import { STORE_NAME, STORE_WHATSAPP_NUMBER } from '../config/store'
 import type { CartItem, Product } from '../types'
 import { formatPrice } from './format'
 
@@ -12,7 +12,7 @@ export function buildCartMessage(items: CartItem[], total: number): string {
       `• ${item.quantity}x ${item.product.name} — ${formatPrice(item.product.price * item.quantity)}`,
   )
   return [
-    'Olá! Quero finalizar este pedido na Loja Vênus:',
+    `Olá! Quero finalizar este pedido na ${STORE_NAME}:`,
     '',
     ...lines,
     '',
@@ -22,7 +22,7 @@ export function buildCartMessage(items: CartItem[], total: number): string {
 
 export function buildProductMessage(product: Product, quantity: number): string {
   return [
-    'Olá! Tenho interesse neste produto da Loja Vênus:',
+    `Olá! Tenho interesse neste produto da ${STORE_NAME}:`,
     '',
     `• ${quantity}x ${product.name} — ${formatPrice(product.price * quantity)}`,
   ].join('\n')

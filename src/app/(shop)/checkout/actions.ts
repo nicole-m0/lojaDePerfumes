@@ -6,7 +6,10 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getProductsForCart } from '@/server/catalog'
 import { computeOrderTotals } from '@/lib/order-pricing'
-import { findInsufficientStockItems } from '@/lib/stock'
+import { buildCartPricing, EMPTY_CART_PRICING, type CartPricing } from '@/lib/cart-pricing'
+import { findInsufficientStockItems, MAX_QTY_PER_LINE } from '@/lib/stock'
+import { orderReturnQuery } from '@/lib/order-access'
+import { issueOrderAccessToken } from '@/server/orders'
 import { createCheckoutPreference, isMercadoPagoConfigured } from '@/lib/mercadopago'
 import {
   quoteShippingForCart,
@@ -16,37 +19,17 @@ import {
 import { isValidZip } from '@/lib/shipping/cep'
 import type { ShippingItemInput, ShippingOption } from '@/lib/shipping/types'
 
-const MAX_QTY_PER_LINE = 99
-const NONCE_COOKIE = 'venus_checkout_nonce'
+const NONCE_COOKIE = 'bc_checkout_nonce'
+// Nome usado antes do rebranding. Só é LIDO (nunca gravado) para que um envio
+// repetido logo após o deploy continue sendo barrado; expira sozinho em 1 h.
+const LEGACY_NONCE_COOKIE = 'venus_checkout_nonce'
 
 // ---------------------------------------------------------------------------
 // Leitura: precificação do carrinho no servidor (nunca confia no cliente).
 // Usada por /carrinho e /checkout para exibir o resumo com o preço real.
 // ---------------------------------------------------------------------------
 
-export interface CartPricingLine {
-  productId: string
-  name: string
-  slug: string
-  imageUrl: string | null
-  iconKey: string | null
-  gradient: string | null
-  unitPriceCents: number
-  compareAtPriceCents: number | null
-  quantity: number
-  lineTotalCents: number
-  available: boolean
-}
-
-export interface CartPricing {
-  lines: CartPricingLine[]
-  subtotalCents: number
-  discountCents: number
-  shippingCents: number
-  totalCents: number
-  hasUnavailable: boolean
-  isEmpty: boolean
-}
+export type { CartPricing, CartPricingLine } from '@/lib/cart-pricing'
 
 const rawItemsSchema = z.array(
   z.object({
@@ -60,56 +43,10 @@ export async function getCartPricing(
 ): Promise<CartPricing> {
   const parsed = rawItemsSchema.safeParse(rawItems)
   const items = parsed.success ? parsed.data : []
-
-  if (items.length === 0) {
-    return {
-      lines: [],
-      subtotalCents: 0,
-      discountCents: 0,
-      shippingCents: 0,
-      totalCents: 0,
-      hasUnavailable: false,
-      isEmpty: true,
-    }
-  }
+  if (items.length === 0) return EMPTY_CART_PRICING
 
   const products = await getProductsForCart(items.map((i) => i.productId))
-  const byId = new Map(products.map((p) => [p.id, p]))
-
-  const lines: CartPricingLine[] = items.map((item) => {
-    const p = byId.get(item.productId)
-    const available = Boolean(p && p.status === 'ACTIVE')
-    const unitPriceCents = p?.priceCents ?? 0
-    return {
-      productId: item.productId,
-      name: p?.name ?? 'Produto indisponível',
-      slug: p?.slug ?? '',
-      imageUrl: p?.images[0]?.url ?? null,
-      iconKey: p?.iconKey ?? null,
-      gradient: p?.gradient ?? null,
-      unitPriceCents,
-      compareAtPriceCents: p?.compareAtPriceCents ?? null,
-      quantity: item.quantity,
-      lineTotalCents: available ? unitPriceCents * item.quantity : 0,
-      available,
-    }
-  })
-
-  const totals = computeOrderTotals(
-    lines
-      .filter((l) => l.available)
-      .map((l) => ({ unitPriceCents: l.unitPriceCents, quantity: l.quantity })),
-  )
-
-  return {
-    lines,
-    subtotalCents: totals.subtotalCents,
-    discountCents: totals.discountCents,
-    shippingCents: totals.shippingCents,
-    totalCents: totals.totalCents,
-    hasUnavailable: lines.some((l) => !l.available),
-    isEmpty: false,
-  }
+  return buildCartPricing(items, products)
 }
 
 // ---------------------------------------------------------------------------
@@ -251,7 +188,8 @@ export async function createWebsiteOrder(
 ): Promise<CheckoutFormState> {
   const cookieStore = await cookies()
   const submittedNonce = String(formData.get('nonce') ?? '')
-  const seenNonce = cookieStore.get(NONCE_COOKIE)?.value
+  const seenNonce =
+    cookieStore.get(NONCE_COOKIE)?.value ?? cookieStore.get(LEGACY_NONCE_COOKIE)?.value
 
   if (submittedNonce && seenNonce && submittedNonce === seenNonce) {
     return { error: 'Este pedido já foi enviado. Confira em seu e-mail ou telefone.' }
@@ -486,7 +424,19 @@ export async function createWebsiteOrder(
   // preferência e redireciona para o ambiente do Mercado Pago. Sem credenciais
   // configuradas, ou se a criação da preferência falhar, cai na página de
   // confirmação — o pedido fica PENDING e o pagamento é tratado manualmente.
-  let destination = `/checkout/sucesso?pedido=${created.number}`
+  //
+  // O link de retorno leva um token assinado (src/lib/order-access.ts): só quem
+  // concluiu a compra vê o resumo do pedido — trocar o número na URL não basta.
+  let accessToken: string | undefined
+  try {
+    accessToken = issueOrderAccessToken(created.id)
+  } catch (err) {
+    // Sem segredo configurado a página de sucesso mostra só a mensagem genérica.
+    console.error('[createWebsiteOrder] token de confirmação indisponível', err)
+  }
+  let destination = accessToken
+    ? `/checkout/sucesso${orderReturnQuery(created.number, accessToken)}`
+    : `/checkout/sucesso?pedido=${created.number}`
   if (isMercadoPagoConfigured()) {
     try {
       const preference = await createCheckoutPreference({
@@ -494,6 +444,7 @@ export async function createWebsiteOrder(
         orderNumber: created.number,
         totalCents: created.totalCents,
         currency: 'BRL',
+        accessToken,
       })
       destination = preference.initPoint
     } catch (err) {

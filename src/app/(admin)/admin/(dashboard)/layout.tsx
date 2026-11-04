@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { Boxes, LayoutDashboard, LogOut, Package, ShoppingCart, Tags, Wallet } from 'lucide-react'
 import { auth, signOut } from '@/auth'
 import { Button } from '@/components/ui/button'
+import Logo, { BrandMark } from '@/components/brand/Logo'
 
 export const metadata: Metadata = {
   title: 'Painel',
@@ -30,10 +31,10 @@ export default async function AdminDashboardLayout({
   return (
     <div className="flex min-h-svh bg-muted/30">
       <aside className="hidden w-60 shrink-0 flex-col border-r bg-sidebar px-3 py-4 md:flex">
-        <div className="px-3 pb-4">
-          <span className="font-script text-2xl text-venus-600">Vênus</span>
-          <p className="text-xs text-muted-foreground">Painel administrativo</p>
-        </div>
+        <Link href="/admin" className="block px-3 pb-5">
+          <Logo size="sm" />
+          <p className="mt-1.5 text-xs text-muted-foreground">Painel administrativo</p>
+        </Link>
 
         <nav className="flex flex-col gap-0.5">
           {NAV_LINKS.map(({ href, label, icon: Icon }) => (
@@ -64,7 +65,9 @@ export default async function AdminDashboardLayout({
 
       <div className="flex flex-1 flex-col">
         <header className="flex items-center justify-between border-b bg-background px-6 py-3">
-          <span className="text-sm text-muted-foreground">
+          <span className="flex items-center gap-2 text-sm text-muted-foreground">
+            {/* Sem sidebar no celular: o símbolo mantém a marca visível. */}
+            <BrandMark className="size-6 md:hidden" title="Bella&Cheirosa" />
             {session.user.email}
             {session.user.role ? ` · ${session.user.role}` : ''}
           </span>

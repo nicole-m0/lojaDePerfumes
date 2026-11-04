@@ -1,6 +1,8 @@
 import 'server-only'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { centsToReais } from '@/lib/format'
+import { orderReturnQuery } from '@/lib/order-access'
+import { STORE_NAME } from '@/config/store'
 
 // ---------------------------------------------------------------------------
 // Cliente Mercado Pago — Checkout Pro (Fase 4).
@@ -42,6 +44,11 @@ export interface PreferenceInput {
   orderNumber: number
   totalCents: number
   currency: string
+  /**
+   * Token de confirmação do pedido (src/lib/order-access.ts). Quando presente, vai
+   * nas back_urls para a página de retorno poder mostrar o resumo do pedido.
+   */
+  accessToken?: string
 }
 
 export interface MercadoPagoPreferencePayload {
@@ -70,12 +77,14 @@ export interface MercadoPagoPreferencePayload {
  */
 export function buildPreferencePayload(input: PreferenceInput): MercadoPagoPreferencePayload {
   const base = getPublicBaseUrl()
-  const q = `?pedido=${input.orderNumber}`
+  const q = input.accessToken
+    ? orderReturnQuery(input.orderNumber, input.accessToken)
+    : `?pedido=${input.orderNumber}`
   const payload: MercadoPagoPreferencePayload = {
     items: [
       {
         id: input.orderId,
-        title: `Pedido #${input.orderNumber} — Loja Vênus`,
+        title: `Pedido #${input.orderNumber} — ${STORE_NAME}`,
         quantity: 1,
         unit_price: centsToReais(input.totalCents),
         currency_id: input.currency || 'BRL',

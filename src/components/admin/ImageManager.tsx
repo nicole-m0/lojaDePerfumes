@@ -6,6 +6,7 @@ import { CldUploadWidget } from 'next-cloudinary'
 import { ImagePlus, Link2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { CLOUDINARY_PRODUCTS_FOLDER } from '@/config/store'
 
 export interface ProductImageInput {
   url: string
@@ -68,7 +69,7 @@ export default function ImageManager({ value, onChange }: ImageManagerProps) {
         {uploadEnabled ? (
           <CldUploadWidget
             signatureEndpoint="/api/cloudinary/sign"
-            options={{ folder: 'loja-venus/produtos', multiple: true, sources: ['local', 'url'] }}
+            options={{ folder: CLOUDINARY_PRODUCTS_FOLDER, multiple: true, sources: ['local', 'url'] }}
             onSuccess={(result) => {
               const info = result?.info
               if (info && typeof info === 'object' && 'secure_url' in info) {

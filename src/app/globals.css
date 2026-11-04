@@ -1,45 +1,62 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Dancing+Script:wght@600;700&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));
 
 /* ---------------------------------------------------------------------------
-   Design system da Loja Vênus (paleta "venus"/"nova") — preservado da SPA.
+   Design system Bella&Cheirosa
+   Direção: "ateliê de perfumaria" — sofisticado, feminino e comercial, sem
+   excesso decorativo. Bordô-rosé como cor de marca, champanhe como acento fino,
+   fundo marfim e tinta ameixa-escura no lugar do preto puro.
+   Tipografia: Cormorant Garamond (títulos/marca) + Manrope (interface/texto),
+   carregadas via next/font em src/app/layout.tsx (variáveis --font-cormorant e
+   --font-manrope).
    --------------------------------------------------------------------------- */
 @theme {
-  --font-sans: 'Poppins', system-ui, sans-serif;
-  --font-script: 'Dancing Script', cursive;
+  /* Bordô-rosé — cor de marca (botões, links, destaques). 600 = primária. */
+  --color-brand-50: #fbf4f6;
+  --color-brand-100: #f5e4e9;
+  --color-brand-200: #ebc8d2;
+  --color-brand-300: #dca1b2;
+  --color-brand-400: #c77a91;
+  --color-brand-500: #ae5875;
+  --color-brand-600: #92425f;
+  --color-brand-700: #77344d;
+  --color-brand-800: #5e2a3e;
+  --color-brand-900: #44202e;
 
-  --color-venus-50: #fff0f6;
-  --color-venus-100: #ffe1ee;
-  --color-venus-200: #ffc3de;
-  --color-venus-300: #ff94c4;
-  --color-venus-400: #ff5da3;
-  --color-venus-500: #f5177d;
-  --color-venus-600: #d6106a;
-  --color-venus-700: #ad0c55;
-  --color-venus-800: #830a41;
-  --color-venus-900: #5c072e;
+  /* Champanhe — acento (o "&" da marca, selos, detalhes). Usar com parcimônia. */
+  --color-champagne-50: #fbf7ef;
+  --color-champagne-100: #f4ead6;
+  --color-champagne-200: #e9d5ae;
+  --color-champagne-300: #d9ba80;
+  --color-champagne-400: #c49e5a;
+  --color-champagne-500: #a98242;
+  --color-champagne-600: #8a6935;
+  --color-champagne-700: #6c522b;
 
-  --color-nova-500: #a855f7;
-  --color-nova-600: #9333ea;
+  /* Neutros quentes. O marfim é o fundo dominante; "sand" alterna seções e
+     fundos de imagem; "ink" é o texto e o bloco escuro (rodapé, faixa editorial). */
+  --color-ivory: #fbf8f5;
+  --color-sand-50: #f6f1ec;
+  --color-sand-100: #efe7df;
+  --color-sand-200: #e2d6cc;
+  --color-sand-300: #c9b8aa;
+  --color-ink: #2a1f24;
+  --color-ink-soft: #5b4d53;
+  /* Filete (divisórias de 1px) — tinta com baixa opacidade. */
+  --color-hairline: rgba(42, 31, 36, 0.14);
 
-  --shadow-glow: 0 0 0 1px rgba(245, 23, 125, 0.08), 0 8px 24px -8px rgba(245, 23, 125, 0.35);
-  --shadow-glow-lg: 0 0 0 1px rgba(245, 23, 125, 0.08), 0 20px 50px -12px rgba(245, 23, 125, 0.45);
+  /* Sombras suaves, tingidas de ameixa (substituem o antigo "glow" neon). */
+  --shadow-glow: 0 1px 2px rgba(68, 32, 46, 0.06), 0 10px 28px -14px rgba(68, 32, 46, 0.35);
+  --shadow-glow-lg: 0 2px 4px rgba(68, 32, 46, 0.05), 0 22px 48px -20px rgba(68, 32, 46, 0.4);
 
-  --animate-float: float 6s ease-in-out infinite;
-  --animate-shimmer: shimmer 2.5s linear infinite;
 }
 
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
-}
-
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+/* Fontes vindas do next/font (variáveis definidas na tag <html>). */
+@theme inline {
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-cormorant), 'Cormorant Garamond', Georgia, serif;
 }
 
 @keyframes toast-in {
@@ -53,60 +70,60 @@
 :root {
   --radius: 0.625rem;
   --background: #ffffff;
-  --foreground: #2a1a24;
+  --foreground: #2a1f24;
   --card: #ffffff;
-  --card-foreground: #2a1a24;
+  --card-foreground: #2a1f24;
   --popover: #ffffff;
-  --popover-foreground: #2a1a24;
-  --primary: #d6106a;
-  --primary-foreground: #fff0f6;
-  --secondary: #f5f5f5;
-  --secondary-foreground: #2a1a24;
-  --muted: #f5f5f5;
-  --muted-foreground: #737373;
-  --accent: #ffe1ee;
-  --accent-foreground: #ad0c55;
+  --popover-foreground: #2a1f24;
+  --primary: #92425f;
+  --primary-foreground: #fbf4f6;
+  --secondary: #f5f0ec;
+  --secondary-foreground: #2a1f24;
+  --muted: #f5f0ec;
+  --muted-foreground: #75676d;
+  --accent: #f5e4e9;
+  --accent-foreground: #77344d;
   --destructive: #e7000b;
-  --border: #e5e5e5;
-  --input: #e5e5e5;
-  --ring: #ff94c4;
-  --sidebar: #fafafa;
-  --sidebar-foreground: #2a1a24;
-  --sidebar-primary: #d6106a;
-  --sidebar-primary-foreground: #fff0f6;
-  --sidebar-accent: #ffe1ee;
-  --sidebar-accent-foreground: #ad0c55;
-  --sidebar-border: #e5e5e5;
-  --sidebar-ring: #ff94c4;
+  --border: #ece4e0;
+  --input: #e3d9d4;
+  --ring: #dca1b2;
+  --sidebar: #fbf8f5;
+  --sidebar-foreground: #2a1f24;
+  --sidebar-primary: #92425f;
+  --sidebar-primary-foreground: #fbf4f6;
+  --sidebar-accent: #f5e4e9;
+  --sidebar-accent-foreground: #77344d;
+  --sidebar-border: #ece4e0;
+  --sidebar-ring: #dca1b2;
 }
 
 .dark {
-  --background: #1c1117;
+  --background: #1d1519;
   --foreground: #fafafa;
-  --card: #2a1a24;
+  --card: #2a1f24;
   --card-foreground: #fafafa;
-  --popover: #2a1a24;
+  --popover: #2a1f24;
   --popover-foreground: #fafafa;
-  --primary: #ff5da3;
-  --primary-foreground: #2a1a24;
-  --secondary: #3a2530;
+  --primary: #dca1b2;
+  --primary-foreground: #2a1f24;
+  --secondary: #3a2a31;
   --secondary-foreground: #fafafa;
-  --muted: #3a2530;
-  --muted-foreground: #b3a0a9;
-  --accent: #3a2530;
+  --muted: #3a2a31;
+  --muted-foreground: #b8a8ae;
+  --accent: #3a2a31;
   --accent-foreground: #fafafa;
   --destructive: #ff6467;
   --border: rgba(255, 255, 255, 0.1);
   --input: rgba(255, 255, 255, 0.15);
-  --ring: #ad0c55;
-  --sidebar: #2a1a24;
+  --ring: #77344d;
+  --sidebar: #2a1f24;
   --sidebar-foreground: #fafafa;
-  --sidebar-primary: #ff5da3;
-  --sidebar-primary-foreground: #2a1a24;
-  --sidebar-accent: #3a2530;
+  --sidebar-primary: #dca1b2;
+  --sidebar-primary-foreground: #2a1f24;
+  --sidebar-accent: #3a2a31;
   --sidebar-accent-foreground: #fafafa;
   --sidebar-border: rgba(255, 255, 255, 0.1);
-  --sidebar-ring: #ad0c55;
+  --sidebar-ring: #77344d;
 }
 
 @theme inline {
@@ -142,29 +159,79 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-* {
-  box-sizing: border-box;
+/* ---------------------------------------------------------------------------
+   Estilos base — dentro de @layer base para que as classes utilitárias do
+   Tailwind (@layer utilities) sempre prevaleçam sobre eles.
+   --------------------------------------------------------------------------- */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background: var(--color-ivory);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Títulos de página/seção na fonte de marca (loja e painel). */
+  h1,
+  h2 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+    /* A Cormorant usa algarismos "old-style" por padrão ("100ml" vira "1ooml"). */
+    font-variant-numeric: lining-nums;
+  }
+
+  /* O utilitário font-display vem do tema; aqui só os algarismos alinhados. */
+  .font-display {
+    font-variant-numeric: lining-nums;
+  }
+
+  ::selection {
+    background: var(--color-brand-100);
+    color: var(--color-brand-900);
+  }
+
+  /* Foco visível e consistente na loja pública (o painel usa o do shadcn). */
+  [data-surface='shop'] :focus-visible {
+    outline: 2px solid var(--color-brand-600);
+    outline-offset: 3px;
+  }
 }
 
-html {
-  scroll-behavior: smooth;
-}
-
-body {
-  margin: 0;
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
+/* Utilitários editoriais da loja. */
+/* Rótulo pequeno em caixa-alta (sobretítulos, marca do produto, colunas). */
+@utility eyebrow {
   font-family: var(--font-sans);
-  color: #2a1a24;
-  background: #fff7fb;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }
 
-::selection {
-  background: var(--color-venus-200);
-  color: var(--color-venus-900);
+/* Sublinhado que cresce no hover — links de texto editoriais. */
+@utility link-underline {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition: background-size 0.3s ease;
+  &:hover,
+  &:focus-visible {
+    background-size: 100% 1px;
+  }
 }
 
 ::-webkit-scrollbar {
@@ -175,27 +242,29 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, var(--color-venus-300), var(--color-venus-500));
+  background: var(--color-sand-200);
   border-radius: 999px;
-  border: 2px solid #fff7fb;
+  border: 2px solid var(--color-ivory);
 }
 
-.font-script {
-  font-family: var(--font-script);
-}
-
+/* Fundo do login do painel: véu rosé + champanhe, discreto. */
 .bg-mesh {
+  background-color: var(--color-brand-50);
   background-image:
-    radial-gradient(at 15% 20%, rgba(245, 23, 125, 0.16) 0px, transparent 55%),
-    radial-gradient(at 85% 0%, rgba(168, 85, 247, 0.14) 0px, transparent 50%),
-    radial-gradient(at 50% 100%, rgba(255, 148, 196, 0.18) 0px, transparent 55%);
+    radial-gradient(at 12% 18%, rgba(220, 161, 178, 0.35) 0px, transparent 55%),
+    radial-gradient(at 88% 8%, rgba(233, 213, 174, 0.45) 0px, transparent 50%),
+    radial-gradient(at 60% 100%, rgba(245, 228, 233, 0.9) 0px, transparent 60%);
 }
 
-.shimmer-text {
-  background: linear-gradient(90deg, var(--color-venus-600) 0%, var(--color-nova-600) 50%, var(--color-venus-600) 100%);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: shimmer 4s linear infinite;
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

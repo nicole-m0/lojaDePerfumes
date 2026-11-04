@@ -195,7 +195,7 @@ export default function ProductForm({
               type="checkbox"
               name="featured"
               defaultChecked={initialValues.featured}
-              className="h-4 w-4 rounded border-neutral-300 text-venus-600"
+              className="h-4 w-4 rounded border-neutral-300 text-brand-600"
             />
             Destaque na vitrine
           </label>

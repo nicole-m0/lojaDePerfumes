@@ -8,6 +8,7 @@ import { reaisToCents } from '@/lib/format'
 import { slugify } from '@/lib/slug'
 import { requireStaff } from '@/server/guard'
 import { registerManualEntry } from '@/server/stock'
+import { removeProduct, type ProductRemovalOutcome } from '@/server/product-removal'
 
 export type ProductFormState = { error?: string; fieldErrors?: Record<string, string> }
 
@@ -188,8 +189,18 @@ export async function deleteProduct(formData: FormData): Promise<void> {
   const id = formData.get('id')
   if (typeof id !== 'string' || !id) return
 
-  await prisma.product.delete({ where: { id } })
+  // Produto com pedidos/movimentações de estoque é ARQUIVADO (preserva histórico,
+  // evita erro de FK); sem vínculos é excluído. Ver src/server/product-removal.ts.
+  let outcome: ProductRemovalOutcome
+  try {
+    outcome = await removeProduct(id)
+  } catch (err) {
+    console.error('[deleteProduct]', err)
+    redirect('/admin/produtos?removido=erro')
+  }
   revalidatePath('/admin/produtos')
+  revalidatePath('/admin/estoque')
   revalidatePath('/')
-  redirect('/admin/produtos')
+  const flag = outcome === 'archived' ? 'arquivado' : outcome === 'deleted' ? 'excluido' : 'nao-encontrado'
+  redirect(`/admin/produtos?removido=${flag}`)
 }

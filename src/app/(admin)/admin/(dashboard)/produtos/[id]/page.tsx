@@ -75,11 +75,14 @@ export default async function EditProductPage({ params }: PageProps) {
           <h1 className="mt-1 text-2xl font-bold">{product.name}</h1>
         </div>
 
-        <form action={deleteProduct}>
+        <form action={deleteProduct} className="flex max-w-56 flex-col items-end gap-1 text-right">
           <input type="hidden" name="id" value={product.id} />
           <Button type="submit" variant="destructive" size="sm">
             Excluir
           </Button>
+          <span className="text-xs text-muted-foreground">
+            Produtos com pedidos ou movimentações de estoque são arquivados, não apagados.
+          </span>
         </form>
       </div>
 

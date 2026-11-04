@@ -18,7 +18,24 @@ const STATUS_LABEL: Record<string, string> = {
   ARCHIVED: 'Arquivado',
 }
 
-export default async function AdminProductsPage() {
+const REMOVAL_NOTICE: Record<string, { text: string; error?: boolean }> = {
+  excluido: { text: 'Produto excluído.' },
+  arquivado: {
+    text:
+      'O produto tem pedidos ou movimentações de estoque, por isso foi arquivado (não aparece ' +
+      'mais na loja, mas o histórico foi preservado). Para reativar, edite e mude o status.',
+  },
+  'nao-encontrado': { text: 'Produto não encontrado — talvez já tenha sido removido.', error: true },
+  erro: { text: 'Não foi possível remover o produto. Tente novamente.', error: true },
+}
+
+interface PageProps {
+  searchParams: Promise<{ removido?: string }>
+}
+
+export default async function AdminProductsPage({ searchParams }: PageProps) {
+  const { removido } = await searchParams
+  const notice = removido ? REMOVAL_NOTICE[removido] : undefined
   const products = await listAdminProducts().catch(() => [])
 
   return (
@@ -35,6 +52,19 @@ export default async function AdminProductsPage() {
           </Link>
         </Button>
       </div>
+
+      {notice && (
+        <p
+          role="status"
+          className={`rounded-lg border px-4 py-3 text-sm ${
+            notice.error
+              ? 'border-destructive/30 bg-destructive/5 text-destructive'
+              : 'border-border bg-muted/40 text-foreground'
+          }`}
+        >
+          {notice.text}
+        </p>
+      )}
 
       <div className="rounded-xl border bg-card">
         <Table>

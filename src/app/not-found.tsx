@@ -1,22 +1,35 @@
 import Link from 'next/link'
-import { SprayCan } from 'lucide-react'
+import Logo from '@/components/brand/Logo'
+import ResultPanel from '@/components/shop/ResultPanel'
+import { ButtonLink, TextLink } from '@/components/shop/ui'
 
+// 404 global: fica fora do layout da loja (sem cabeçalho), então traz a marca.
 export default function NotFound() {
   return (
-    <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col items-center justify-center px-4 py-24 text-center">
-      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-venus-50">
-        <SprayCan className="h-9 w-9 text-venus-300" strokeWidth={1.5} />
-      </div>
-      <h1 className="mt-5 text-2xl font-bold text-neutral-800">Página não encontrada</h1>
-      <p className="mt-2 max-w-sm text-sm text-neutral-500">
-        O produto ou a página que você procura não existe ou foi removida.
-      </p>
-      <Link
-        href="/"
-        className="mt-6 rounded-full bg-venus-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-venus-700"
+    <div data-surface="shop" className="flex min-h-svh flex-1 flex-col">
+      <header className="border-b border-hairline">
+        <div className="mx-auto flex h-16 max-w-[1360px] items-center px-5 sm:px-8 lg:px-12">
+          <Link href="/" aria-label="Página inicial">
+            <Logo size="sm" />
+          </Link>
+        </div>
+      </header>
+      <ResultPanel
+        status="Erro 404"
+        title={
+          <>
+            Esta página <em>se perdeu</em> no caminho.
+          </>
+        }
+        actions={
+          <>
+            <ButtonLink href="/">Voltar à loja</ButtonLink>
+            <TextLink href="/#colecoes">Ver coleções</TextLink>
+          </>
+        }
       >
-        Voltar para a loja
-      </Link>
-    </main>
+        <p>O produto ou a página que você procura não existe ou foi removido.</p>
+      </ResultPanel>
+    </div>
   )
 }

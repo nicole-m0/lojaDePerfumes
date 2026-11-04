@@ -2,17 +2,20 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react'
 import { useCart } from '../context/useCart'
 import { formatCents, formatPrice } from '../lib/format'
+import { MAX_QTY_PER_LINE } from '../lib/stock'
 import { buildCartMessage, buildWhatsAppUrl } from '../lib/whatsapp'
 import { getCartPricing, type CartPricing } from '../app/(shop)/checkout/actions'
 import ProductVisual from './ProductVisual'
 import OrderSummary from './OrderSummary'
+import QuantityStepper from './shop/QuantityStepper'
+import { buttonClasses } from './shop/ui'
 
 export default function CartView() {
-  const { items, removeItem, updateQuantity, clearCart, totalPrice } = useCart()
+  const { items, isHydrated, removeItem, updateQuantity, clearCart, totalPrice } = useCart()
   const [pricing, setPricing] = useState<CartPricing | null>(null)
+  const [pricingLoading, setPricingLoading] = useState(true)
 
   const cartKey = useMemo(
     () => items.map((i) => `${i.product.id}:${i.quantity}`).join('|'),
@@ -21,6 +24,7 @@ export default function CartView() {
 
   useEffect(() => {
     let active = true
+    setPricingLoading(true)
     const payload = items.map((i) => ({ productId: i.product.id, quantity: i.quantity }))
     getCartPricing(payload)
       .then((result) => {
@@ -29,24 +33,42 @@ export default function CartView() {
       .catch(() => {
         if (active) setPricing(null)
       })
+      .finally(() => {
+        if (active) setPricingLoading(false)
+      })
     return () => {
       active = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cartKey])
 
+  // Antes de ler o carrinho salvo no navegador: estado neutro (não "vazia").
+  if (!isHydrated) {
+    return (
+      <div aria-busy="true" className="grid gap-10 lg:grid-cols-12">
+        <div className="space-y-4 lg:col-span-8">
+          {[0, 1].map((i) => (
+            <div key={i} className="flex gap-5 border-b border-hairline pb-6">
+              <div className="aspect-[4/5] w-24 bg-sand-100" />
+              <div className="flex-1 space-y-3 pt-1">
+                <div className="h-3 w-24 bg-sand-100" />
+                <div className="h-5 w-2/3 bg-sand-100" />
+              </div>
+            </div>
+          ))}
+        </div>
+        <span className="sr-only">Carregando sua sacola…</span>
+      </div>
+    )
+  }
+
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-4 rounded-2xl border border-venus-100 bg-white py-16 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-venus-50">
-          <ShoppingBag className="h-7 w-7 text-venus-300" />
-        </div>
-        <p className="text-sm text-neutral-500">Seu carrinho está vazio.</p>
-        <Link
-          href="/"
-          className="rounded-full bg-venus-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-venus-700"
-        >
-          Explorar produtos
+      <div className="flex flex-col items-start gap-4 border-t border-hairline py-16">
+        <p className="font-display text-4xl text-ink">Sua sacola está vazia.</p>
+        <p className="text-sm text-ink-soft">Explore as coleções e adicione o que gostar.</p>
+        <Link href="/#catalogo" className={buttonClasses('primary', 'md', 'mt-2')}>
+          Explorar a loja
         </Link>
       </div>
     )
@@ -54,111 +76,130 @@ export default function CartView() {
 
   const lineById = new Map((pricing?.lines ?? []).map((l) => [l.productId, l]))
   const hasUnavailable = pricing?.hasUnavailable ?? false
+  const hasInsufficientStock = pricing?.hasInsufficientStock ?? false
+  const blocked = hasUnavailable || hasInsufficientStock
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
-      <ul className="divide-y divide-venus-50 rounded-2xl border border-venus-100 bg-white px-4">
-        {items.map((item) => {
-          const line = lineById.get(item.product.id)
-          const unavailable = line ? !line.available : false
-          const lineTotal = line?.available
-            ? formatCents(line.lineTotalCents)
-            : formatPrice(item.product.price * item.quantity)
+    <div className="grid gap-12 lg:grid-cols-12 lg:gap-16">
+      <div className="lg:col-span-8">
+        <ul className="divide-y divide-hairline border-y border-hairline">
+          {items.map((item) => {
+            const line = lineById.get(item.product.id)
+            const unavailable = line ? !line.available : false
+            const insufficient = line?.insufficientStock ?? false
+            // Teto do botão "+": estoque informado pelo servidor; sem ele, o snapshot local.
+            const maxQty = Math.min(
+              line?.availableQuantity ?? item.product.availableQuantity ?? MAX_QTY_PER_LINE,
+              MAX_QTY_PER_LINE,
+            )
+            const lineTotal = line?.available
+              ? formatCents(line.lineTotalCents)
+              : formatPrice(item.product.price * item.quantity)
 
-          return (
-            <li key={item.product.id} className="flex gap-3 py-4">
-              <Link
-                href={`/produto/${item.product.slug}`}
-                className="shrink-0 overflow-hidden rounded-xl"
-              >
-                <ProductVisual product={item.product} className="h-20 w-20" iconClassName="h-8 w-8" />
-              </Link>
-
-              <div className="flex flex-1 flex-col gap-1">
+            return (
+              <li key={item.product.id} className="flex gap-5 py-6">
                 <Link
                   href={`/produto/${item.product.slug}`}
-                  className="line-clamp-2 text-sm font-medium text-neutral-800 transition hover:text-venus-600"
+                  className="shrink-0"
+                  tabIndex={-1}
+                  aria-hidden="true"
                 >
-                  {item.product.name}
+                  <ProductVisual
+                    product={item.product}
+                    variant="thumb"
+                    className={`aspect-[4/5] w-24 sm:w-28 ${unavailable ? 'opacity-50 grayscale' : ''}`}
+                  />
                 </Link>
 
-                {unavailable && (
-                  <span className="w-fit rounded bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-600">
-                    Indisponível — remova para continuar
-                  </span>
-                )}
-
-                <div className="mt-auto flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1 rounded-full border border-venus-100">
-                    <button
-                      type="button"
-                      onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                      aria-label="Diminuir quantidade"
-                      className="flex h-7 w-7 items-center justify-center rounded-full text-venus-600 transition hover:bg-venus-50"
-                    >
-                      <Minus className="h-3.5 w-3.5" />
-                    </button>
-                    <span className="w-6 text-center text-sm font-medium text-neutral-700">
-                      {item.quantity}
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="eyebrow text-[0.625rem] text-ink-soft">{item.product.brand}</p>
+                      <Link
+                        href={`/produto/${item.product.slug}`}
+                        className="mt-1 block font-display text-xl leading-snug text-ink hover:underline sm:text-2xl"
+                      >
+                        {item.product.name}
+                      </Link>
+                    </div>
+                    <span className="shrink-0 text-sm font-semibold tabular-nums text-ink">
+                      {lineTotal}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateQuantity(item.product.id, Math.min(item.quantity + 1, 99))
-                      }
-                      disabled={item.quantity >= 99}
-                      aria-label="Aumentar quantidade"
-                      className="flex h-7 w-7 items-center justify-center rounded-full text-venus-600 transition hover:bg-venus-50 disabled:opacity-40"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                    </button>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => removeItem(item.product.id)}
-                    aria-label={`Remover ${item.product.name}`}
-                    className="flex items-center gap-1 text-xs font-medium text-red-500 transition hover:text-red-600"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Remover
-                  </button>
+                  {unavailable && (
+                    <p className="mt-2 text-xs font-medium text-red-700">
+                      Indisponível — remova para continuar.
+                    </p>
+                  )}
+                  {insufficient && line && (
+                    <p className="mt-2 text-xs font-medium text-amber-800">
+                      {line.availableQuantity === 0
+                        ? 'Esgotado — remova para continuar.'
+                        : `Só ${line.availableQuantity} disponível(is) — ajuste a quantidade.`}
+                    </p>
+                  )}
+
+                  <div className="mt-auto flex items-center justify-between gap-3 pt-4">
+                    <QuantityStepper
+                      value={item.quantity}
+                      label={item.product.name}
+                      onDecrease={() => updateQuantity(item.product.id, item.quantity - 1)}
+                      onIncrease={() =>
+                        updateQuantity(item.product.id, Math.min(item.quantity + 1, maxQty))
+                      }
+                      canIncrease={item.quantity < maxQty}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeItem(item.product.id)}
+                      aria-label={`Remover ${item.product.name}`}
+                      className="link-underline pb-0.5 text-xs text-ink-soft hover:text-ink"
+                    >
+                      Remover
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </li>
+            )
+          })}
+        </ul>
 
-              <span className="shrink-0 self-start text-sm font-bold text-venus-600">{lineTotal}</span>
-            </li>
-          )
-        })}
+        <button
+          type="button"
+          onClick={clearCart}
+          className="mt-5 text-xs text-ink-soft underline-offset-4 hover:text-ink hover:underline"
+        >
+          Esvaziar sacola
+        </button>
+      </div>
 
-        <li className="py-3">
-          <button
-            type="button"
-            onClick={clearCart}
-            className="text-xs font-medium text-neutral-400 transition hover:text-red-500"
+      <aside
+        aria-label="Resumo"
+        className="h-fit bg-sand-50 p-6 sm:p-8 lg:sticky lg:top-32 lg:col-span-4"
+      >
+        <p className="eyebrow mb-4 text-ink-soft">Resumo</p>
+        <div aria-busy={pricingLoading} className={pricingLoading ? 'opacity-60' : ''}>
+          <OrderSummary
+            subtotalCents={pricing?.subtotalCents ?? 0}
+            discountCents={pricing?.discountCents ?? 0}
+            shippingCents={pricing?.shippingCents ?? 0}
+            totalCents={pricing?.totalCents ?? 0}
+            shippingPendingLabel="calculado no checkout"
+          />
+        </div>
+
+        {blocked ? (
+          <p
+            role="alert"
+            className="mt-6 border-l-2 border-red-700 bg-ivory px-4 py-3 text-xs text-red-800"
           >
-            Limpar carrinho
-          </button>
-        </li>
-      </ul>
-
-      <aside className="h-fit space-y-4 rounded-2xl border border-venus-100 bg-white p-5">
-        <OrderSummary
-          subtotalCents={pricing?.subtotalCents ?? 0}
-          discountCents={pricing?.discountCents ?? 0}
-          shippingCents={pricing?.shippingCents ?? 0}
-          totalCents={pricing?.totalCents ?? 0}
-        />
-
-        {hasUnavailable ? (
-          <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
-            Remova os itens indisponíveis para prosseguir.
+            {hasUnavailable
+              ? 'Remova os itens indisponíveis para prosseguir.'
+              : 'Ajuste as quantidades ao estoque disponível para prosseguir.'}
           </p>
         ) : (
-          <Link
-            href="/checkout"
-            className="flex w-full items-center justify-center rounded-full bg-gradient-to-r from-venus-500 to-venus-600 py-3 text-sm font-bold text-white shadow-glow transition hover:brightness-110"
-          >
+          <Link href="/checkout" className={buttonClasses('primary', 'lg', 'mt-6 w-full')}>
             Ir para o checkout
           </Link>
         )}
@@ -167,9 +208,9 @@ export default function CartView() {
           href={buildWhatsAppUrl(buildCartMessage(items, totalPrice))}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex w-full items-center justify-center rounded-full border border-venus-200 py-2.5 text-sm font-semibold text-venus-700 transition hover:bg-venus-50"
+          className={buttonClasses('outline', 'md', 'mt-3 w-full')}
         >
-          Finalizar pedido no WhatsApp
+          Finalizar pelo WhatsApp
         </a>
       </aside>
     </div>

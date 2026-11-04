@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect } from 'react'
+import ResultPanel from '@/components/shop/ResultPanel'
+import { buttonClasses } from '@/components/shop/ui'
 
 export default function ShopError({
   error,
@@ -14,18 +16,17 @@ export default function ShopError({
   }, [error])
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center px-4 py-24 text-center">
-      <h1 className="text-2xl font-bold text-neutral-800">Não foi possível carregar a loja</h1>
-      <p className="mt-2 max-w-sm text-sm text-neutral-500">
-        Tivemos um problema ao buscar os produtos. Tente novamente em instantes.
-      </p>
-      <button
-        type="button"
-        onClick={reset}
-        className="mt-6 rounded-full bg-venus-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-venus-700"
-      >
-        Tentar de novo
-      </button>
-    </main>
+    <ResultPanel
+      status="Algo deu errado"
+      tone="error"
+      title="Não foi possível carregar a loja"
+      actions={
+        <button type="button" onClick={reset} className={buttonClasses('primary')}>
+          Tentar de novo
+        </button>
+      }
+    >
+      <p>Tivemos um problema ao buscar os produtos. Tente novamente em instantes.</p>
+    </ResultPanel>
   )
 }

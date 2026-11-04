@@ -2,7 +2,9 @@ import 'server-only'
 import { v2 as cloudinary } from 'cloudinary'
 
 export const CLOUDINARY_CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ?? ''
-export const CLOUDINARY_FOLDER = 'loja-venus/produtos'
+// Só afeta NOVOS uploads. Imagens já enviadas guardam a URL completa e o publicId
+// no banco (ProductImage) e continuam funcionando na pasta antiga.
+export { CLOUDINARY_PRODUCTS_FOLDER as CLOUDINARY_FOLDER } from '@/config/store'
 
 export const cloudinaryConfigured = Boolean(
   CLOUDINARY_CLOUD_NAME &&

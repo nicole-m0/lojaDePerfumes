@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { findInsufficientStockItems, isLowStock, type StockAvailabilityItem } from './stock'
+import {
+  clampToAvailable,
+  findInsufficientStockItems,
+  isLowStock,
+  isOutOfStock,
+  maxPurchasableQuantity,
+  MAX_QTY_PER_LINE,
+  type StockAvailabilityItem,
+} from './stock'
 
 describe('isLowStock', () => {
   it('sinaliza estoque zerado ou negativo', () => {
@@ -38,5 +46,38 @@ describe('findInsufficientStockItems', () => {
   it('considera insuficiente quando o disponível é zero', () => {
     const zeroed = item({ requestedQuantity: 1, availableQuantity: 0 })
     expect(findInsufficientStockItems([zeroed])).toEqual([zeroed])
+  })
+})
+
+describe('maxPurchasableQuantity / isOutOfStock', () => {
+  it('esgotado com saldo zero, negativo ou ausente', () => {
+    for (const v of [0, -2, null, undefined, Number.NaN]) {
+      expect(maxPurchasableQuantity(v)).toBe(0)
+      expect(isOutOfStock(v)).toBe(true)
+    }
+  })
+
+  it('usa o saldo, limitado ao máximo por linha', () => {
+    expect(maxPurchasableQuantity(3)).toBe(3)
+    expect(maxPurchasableQuantity(500)).toBe(MAX_QTY_PER_LINE)
+    expect(isOutOfStock(1)).toBe(false)
+  })
+})
+
+describe('clampToAvailable', () => {
+  it('não deixa passar do estoque conhecido', () => {
+    expect(clampToAvailable(5, 2)).toBe(2)
+    expect(clampToAvailable(2, 2)).toBe(2)
+    expect(clampToAvailable(1, 0)).toBe(0)
+  })
+
+  it('estoque desconhecido (carrinho antigo) aplica só o limite por linha', () => {
+    expect(clampToAvailable(5, undefined)).toBe(5)
+    expect(clampToAvailable(1000, undefined)).toBe(MAX_QTY_PER_LINE)
+  })
+
+  it('nunca devolve negativo nem fração', () => {
+    expect(clampToAvailable(-3, 10)).toBe(0)
+    expect(clampToAvailable(2.7, 10)).toBe(2)
   })
 })

@@ -6,8 +6,8 @@
 // (b) usar o CEP para cotar o frete.
 
 const inputClass =
-  'mt-1 w-full rounded-lg border border-venus-100 bg-white px-3 py-2 text-sm text-neutral-800 outline-none transition focus:border-venus-300 focus:ring-2 focus:ring-venus-200'
-const labelClass = 'text-xs font-medium text-neutral-600'
+  'mt-2 h-12 w-full border border-ink/20 bg-ivory px-4 text-sm text-ink outline-none transition-colors placeholder:text-ink-soft focus:border-ink'
+const labelClass = 'text-xs font-medium tracking-wide text-ink-soft'
 
 export interface AddressValue {
   recipientName: string
@@ -49,7 +49,7 @@ export default function AddressFields({ value, onChange, zipHint }: AddressField
       onChange({ [field]: e.target.value })
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid gap-x-5 gap-y-5 sm:grid-cols-2">
       <label className="sm:col-span-2 block">
         <span className={labelClass}>Destinatário</span>
         <input

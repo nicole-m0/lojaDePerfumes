@@ -51,6 +51,20 @@ describe('buildPreferencePayload', () => {
     expect(p.back_urls.pending).toBe('https://loja.example.com/checkout/pendente?pedido=1')
   })
 
+  it('leva o token de confirmação nas back_urls quando informado', () => {
+    const p = buildPreferencePayload({
+      orderId: 'o1',
+      orderNumber: 1,
+      totalCents: 100,
+      currency: 'BRL',
+      accessToken: 'abcDEF_-0123456789abcdefghijklmn',
+    })
+    const q = '?pedido=1&token=abcDEF_-0123456789abcdefghijklmn'
+    expect(p.back_urls.success).toBe(`https://loja.example.com/checkout/sucesso${q}`)
+    expect(p.back_urls.failure).toBe(`https://loja.example.com/checkout/falha${q}`)
+    expect(p.back_urls.pending).toBe(`https://loja.example.com/checkout/pendente${q}`)
+  })
+
   it('auto_return só com base HTTPS', () => {
     process.env.AUTH_URL = 'https://loja.example.com'
     expect(buildPreferencePayload({ orderId: 'o', orderNumber: 1, totalCents: 100, currency: 'BRL' }).auto_return).toBe(

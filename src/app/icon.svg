@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <title>Bella&amp;Cheirosa</title>
+  <rect width="32" height="32" rx="7" fill="#77344d"/>
+  <rect x="12" y="3.5" width="8" height="4.5" rx="1.2" fill="#d9ba80"/>
+  <rect x="14" y="8" width="4" height="2.75" fill="#f4ead6"/>
+  <rect x="7.25" y="10.75" width="17.5" height="17.5" rx="5" fill="none" stroke="#f4ead6" stroke-width="2"/>
+  <path d="M16 14.5c.55 3.2 1.55 4.2 4.75 4.75-3.2.55-4.2 1.55-4.75 4.75-.55-3.2-1.55-4.2-4.75-4.75 3.2-.55 4.2-1.55 4.75-4.75Z" fill="#d9ba80"/>
+</svg>

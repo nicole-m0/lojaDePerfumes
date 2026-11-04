@@ -1,5 +1,6 @@
 import 'server-only'
 import { prisma } from '@/lib/prisma'
+import { createOrderAccessToken, verifyOrderAccessToken } from '@/lib/order-access'
 
 // Camada de leitura de pedidos para o painel administrativo.
 // As mutações administrativas (status, pagamento, entrega, notas, cancelamento)
@@ -46,17 +47,48 @@ export async function countOrders() {
   return prisma.order.count()
 }
 
-/** Leitura mínima para a página pública de confirmação (`/checkout/sucesso`). */
-export async function getOrderConfirmation(number: number) {
+/** Segredo dos tokens de confirmação de pedido — reaproveita o AUTH_SECRET. */
+export function getOrderAccessSecret(): string | undefined {
+  return process.env.AUTH_SECRET || undefined
+}
+
+/** Token que autoriza ver a confirmação do pedido (ver src/lib/order-access.ts). */
+export function issueOrderAccessToken(orderId: string): string {
+  return createOrderAccessToken(orderId, getOrderAccessSecret())
+}
+
+export interface OrderConfirmation {
+  number: number
+  paymentStatus: string
+  totalCents: number
+}
+
+/**
+ * Leitura mínima para a página pública de confirmação (`/checkout/sucesso`).
+ *
+ * O número do pedido é sequencial e NÃO autoriza nada sozinho: os dados só são
+ * devolvidos com um `token` válido para aquele pedido. Qualquer falha (número
+ * inválido, pedido inexistente, token ausente/errado, segredo não configurado)
+ * devolve `null` — mesma resposta, para não revelar se o pedido existe.
+ * Nunca retorna dados pessoais (nome, contato, endereço).
+ */
+export async function getOrderConfirmation(
+  number: number,
+  token: string | null | undefined,
+): Promise<OrderConfirmation | null> {
   if (!Number.isInteger(number) || number <= 0) return null
-  return prisma.order.findUnique({
+  if (typeof token !== 'string' || token.length === 0) return null
+
+  const order = await prisma.order.findUnique({
     where: { number },
-    select: {
-      number: true,
-      status: true,
-      paymentStatus: true,
-      totalCents: true,
-      createdAt: true,
-    },
+    select: { id: true, number: true, paymentStatus: true, totalCents: true },
   })
+  if (!order) return null
+  if (!verifyOrderAccessToken(order.id, token, getOrderAccessSecret())) return null
+
+  return {
+    number: order.number,
+    paymentStatus: order.paymentStatus,
+    totalCents: order.totalCents,
+  }
 }
