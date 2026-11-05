@@ -12,24 +12,65 @@ scripts deste repositório. Veja [Histórico](#histórico).
 
 | Variável | Valor (Supabase → Connect → ORMs → Prisma) | Onde fica |
 |---|---|---|
-| `DATABASE_URL` | Transaction pooler, porta 6543, com `?pgbouncer=true&connection_limit=1` | `.env.local` e Vercel |
-| `DIRECT_URL` | Session pooler, porta 5432 | só `.env.local` |
+| `DATABASE_URL` | Transaction pooler, porta 6543, com `?pgbouncer=true&connection_limit=1&sslmode=require` | `.env.local` e Vercel |
+| `DIRECT_URL` | Session pooler, porta 5432, com `?sslmode=require` | só `.env.local` |
 
-A conexão direta (`db.<ref>.supabase.co`) também é aceita como `DIRECT_URL`, mas no
-plano Free ela só funciona por IPv6. Prefira o Session pooler.
+Se a URL copiada do painel não tiver `sslmode=require`, acrescente-o nas duas URLs.
+
+A conexão direta (`db.<ref>.supabase.co`) **não é aceita**: só os poolers.
+
+### Validação de destino (todos os comandos de banco)
+
+`db:status`, `db:migrate`, `db:init`, `db:seed` e `prisma:studio` passam por
+`scripts/demo-db.ts` → `src/lib/demo-db/cli.ts`, que, **antes de carregar o Prisma**:
+
+1. lê `DATABASE_URL` e `DIRECT_URL` **do próprio arquivo `.env.local`** (`env-file.ts`).
+   Variável ausente, vazia ou com valor diferente no processo (variável do sistema) →
+   recusa. Não há fallback de uma URL para a outra nem para o `.env`;
+2. exige os poolers do projeto Supabase da demonstração (`assertDemoPoolerPair`,
+   `connection.ts`), com o Project Reference fixado em `DEMO_SUPABASE_PROJECT_REF`:
+
+| Regra | `DATABASE_URL` | `DIRECT_URL` |
+|---|---|---|
+| host | `aws-N-<região>.pooler.supabase.com` | o mesmo host |
+| usuário | `postgres.<DEMO_SUPABASE_PROJECT_REF>` | igual |
+| database | `/postgres` | `/postgres` |
+| porta | `6543` | `5432` |
+| parâmetros permitidos (lista fechada) | `pgbouncer=true` (obrigatório), `sslmode=require` (obrigatório), `connection_limit` (opcional, inteiro positivo) | `sslmode=require` (obrigatório) |
+| recusado | qualquer outro parâmetro (ex.: `host=`, `schema=`, `options=`), parâmetro repetido, fragmento `#` | igual |
+| sempre | senha presente | igual |
+
+3. no `seed`, aplica a mesma regra a `ADMIN_*` (`resolveDemoAdminVars`, `target.ts`):
+   `ADMIN_EMAIL` e `ADMIN_PASSWORD` obrigatórias no arquivo e iguais no processo;
+   `ADMIN_NAME` opcional — se ausente do arquivo, o valor do processo é ignorado.
+
+Por que ler o arquivo, e não `process.env`: o `@prisma/client`, ao ser importado,
+carrega o `.env` da raiz (banco antigo) e preenche as variáveis ausentes. Nada no
+caminho dos scripts importa o Prisma estaticamente (travado por
+`npm-scripts.test.ts`); ele só é carregado depois da validação.
+
+O `prisma migrate deploy` roda com um ambiente **mínimo e explícito** (`migrateEnv`,
+`cli.ts`): só variáveis de sistema (caminhos, temporários, perfil do Windows), as duas
+URLs validadas e `CHECKPOINT_DISABLE=1`. O Prisma CLI ainda lê o `.env` por conta
+própria, mas não sobrescreve `DATABASE_URL`/`DIRECT_URL` já definidas.
+
+**Mensagens de erro:** as da validação citam só o nome da variável e a regra violada,
+nunca URL, usuário, senha ou valores de parâmetro. Depois da validação, erros de
+conexão do próprio Prisma (ex.: autenticação, P1000) podem citar host e **usuário**
+(`postgres.<ref>`, que não é segredo) — nunca a senha.
 
 ### Como cada ferramenta carrega as variáveis
 
 | Ferramenta | `.env` | `.env.local` |
 |---|---|---|
-| Next.js (`dev`, `build`, `start`) | lê | lê, **com prioridade** |
+| Next.js (`dev`, `build`, `start`) | lê (preenche o que faltar) | lê, **com prioridade** |
 | Prisma CLI chamado diretamente (`npx prisma …`) | lê sozinho | **não lê** |
-| `npm run db:*` e `npm run prisma:studio` | lê (via Prisma) | lê via `--env-file=.env.local`, **com prioridade** |
+| `npm run db:*` e `npm run prisma:studio` | ignorado para conexão e admin | **fonte única** (lido do arquivo e validado) |
 | Vercel | — | — (só as variáveis do painel) |
 
 - **Nunca** rode `npx prisma …` direto: sem o `.env.local`, ele usaria a `DATABASE_URL`
   do `.env`. Use os scripts npm.
-- Sem `.env.local`, os scripts `db:*` param com erro antes de conectar.
+- Sem `.env.local`, os scripts param com erro antes de conectar.
 - Não use `npx auth secret` nem `vercel env pull`: os dois gravam no `.env.local`.
 
 ### Qual URL cada operação usa
@@ -37,16 +78,11 @@ plano Free ela só funciona por IPv6. Prefira o Session pooler.
 | Operação | URL | Observações |
 |---|---|---|
 | Loja e painel (Next.js, local e Vercel) | `DATABASE_URL` (6543) | `src/lib/prisma.ts` |
-| `db:status` | `DIRECT_URL` (ou `DATABASE_URL` se ela faltar) | somente leitura |
-| `db:migrate` | leitura de checagem por `DIRECT_URL`; `prisma migrate deploy` por `directUrl` = `DIRECT_URL` | binário local do Prisma, sem `npx` |
-| `db:init`, `db:seed` | `DIRECT_URL` (**obrigatória**) | |
-| `prisma:studio` | `DIRECT_URL` (`directUrl` do schema) | |
-| Fotografia do banco antigo | `DATABASE_URL` do arquivo indicado em `--env-file` | somente leitura |
-
-Sempre que `DIRECT_URL` existe, os scripts conferem se ela aponta para o mesmo banco da
-`DATABASE_URL`. No Supabase, isso significa mesmo *project ref* e mesmo database; em
-outros provedores, mesmo host, usuário e database. Mensagens de erro nunca incluem
-usuário nem senha.
+| `db:status` | `DIRECT_URL` (5432) | somente leitura |
+| `db:migrate` | leitura de checagem por `DIRECT_URL`; `prisma migrate deploy` por `directUrl` = `DIRECT_URL` | binário local do Prisma, sem `npx`; o processo filho recebe as duas URLs validadas |
+| `db:init`, `db:seed` | `DIRECT_URL` (5432) | |
+| `prisma:studio` | Prisma Studio local, com as duas URLs validadas no processo filho | |
+| Fotografia do banco antigo | `DATABASE_URL` do arquivo indicado em `--env-file` | somente leitura; não usa a validação acima |
 
 ## Como o isolamento é garantido
 
@@ -55,7 +91,7 @@ usuário nem senha.
 | Identificação do servidor | `pg_control_system().system_identifier`, lido só depois de conferir a permissão (`has_function_privilege`). O id do banco antigo está em `LEGACY_SYSTEM_IDENTIFIERS` (`src/lib/demo-db/guard.ts`) e é sempre recusado. Servidor sem id identificável também é recusado. |
 | Marcador de demonstração | `db:init` grava `Setting["deployment.environment"]`, e só num banco com schema completo e tabelas de negócio vazias. `db:seed` exige esse marcador, do mesmo alvo e do mesmo servidor. |
 | Alvo explícito | `--target=production` exige também `--yes-production`. O alvo `development` existe no código para um eventual banco local, mas não há nenhum configurado. |
-| Escrita só com `.env.local` | `migrate`, `init` e `seed` exigem `DIRECT_URL`, que o `.env` antigo não define. |
+| Destino fixado | Todos os comandos exigem, no próprio `.env.local`, os poolers do projeto Supabase `DEMO_SUPABASE_PROJECT_REF` (ver [Validação de destino](#validação-de-destino-todos-os-comandos-de-banco)). |
 | Leitura protegida | Sessão com `default_transaction_read_only=on` **e** transação `READ ONLY` conferida antes de qualquer consulta. Se o pooler recusar o parâmetro de sessão, o `db:status` falha antes de ler qualquer coisa: o erro é seguro e será analisado antes de mudar algo. |
 | Sem atalhos perigosos | Sem seed automático do Prisma; nenhum script usa `migrate dev`, `migrate reset` ou `db push` (travado por `src/lib/demo-db/npm-scripts.test.ts`). |
 | Fotografia | `scripts/legacy-snapshot.ts` (somente leitura) prova que o banco antigo não mudou. |
@@ -74,8 +110,23 @@ npm run db:init    -- --target=production --yes-production     # marca o banco c
 npm run db:seed    -- --target=production --yes-production     # admin + 32 produtos + estoque inicial
 ```
 
-O seed é idempotente: rodar de novo não duplica registros, não soma estoque e não troca
-a senha de um admin existente.
+O seed **só cria o que não existe e nunca altera um registro existente**
+(`src/lib/demo-db/seed.ts`). Pode rodar de novo quantas vezes for preciso: ele só
+completa o que falta, inclusive depois de uma execução interrompida.
+
+| Registro | Se já existe | Se não existe |
+|---|---|---|
+| Admin (`ADMIN_EMAIL`) | não altera nada: não promove, não reativa, não troca nome nem senha | cria como OWNER |
+| Categoria / marca | reaproveita (pelo slug, depois pelo nome), sem alterar | cria |
+| Produto (slug) | não toca: dados, status (inclusive arquivado), especificações, imagens e estoque | cria produto + especificações + imagens + entrada de estoque inicial numa **única transação** |
+
+- Edições feitas no painel nunca são desfeitas pelo seed.
+- Se uma criação falhar, a transação daquele produto é desfeita por inteiro (nada
+  órfão); rodar de novo cria o que faltou.
+- Execuções simultâneas: o slug/e-mail/nome únicos fazem a segunda falhar ao criar; o
+  seed trata o conflito como "já existente" — sem registros nem estoque em dobro.
+- Consequência: mudanças em `src/data/demo-catalog.ts` depois do primeiro seed **não**
+  chegam aos produtos já criados; ajuste-os pelo painel.
 
 Fotografia do banco antigo (somente leitura), usando a cópia guardada fora do projeto:
 
@@ -89,16 +140,17 @@ npx tsx --env-file="C:/Users/Nicole/.secrets/bella-cheirosa/railway-legado.env" 
 ### 1. `.env.local` (raiz do projeto, fora do git)
 
 ```
-DATABASE_URL="<Transaction pooler, porta 6543, com ?pgbouncer=true&connection_limit=1>"
-DIRECT_URL="<Session pooler, porta 5432>"
+DATABASE_URL="<Transaction pooler, porta 6543, com ?pgbouncer=true&connection_limit=1&sslmode=require>"
+DIRECT_URL="<Session pooler, porta 5432, com ?sslmode=require>"
 ADMIN_EMAIL="<e-mail do admin da demonstração>"
 ADMIN_PASSWORD="<mínimo de 10 caracteres>"
 ADMIN_NAME="<nome exibido no painel>"
 ```
 
 `ADMIN_*` são lidas **somente pelo seed**, para criar a conta OWNER; o login lê o banco.
-**Se o `.env.local` não as definir, o seed usará as do `.env`, que são as do painel
-antigo.**
+`ADMIN_EMAIL` e `ADMIN_PASSWORD` precisam estar **no `.env.local`**: o seed recusa
+valores que só existam no `.env` (os do painel antigo) ou que difiram do processo. Sem `ADMIN_NAME` no arquivo, usa
+"Administração".
 
 ### 2. Supabase: desativar a Data API
 
@@ -112,7 +164,7 @@ ficariam acessíveis pela API com a chave `anon`, que é pública.
 
 | Variável | Production |
 |---|---|
-| `DATABASE_URL` | Transaction pooler (6543) com `?pgbouncer=true&connection_limit=1` |
+| `DATABASE_URL` | Transaction pooler (6543) com `?pgbouncer=true&connection_limit=1&sslmode=require` |
 | `AUTH_SECRET` | valor próprio |
 | `AUTH_URL` | `https://<domínio>.vercel.app` |
 | `AUTH_TRUST_HOST` | `true` |

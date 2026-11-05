@@ -59,7 +59,7 @@ npm run dev
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | testes (Vitest) |
 | `npm run prisma:generate` | gera o Prisma Client (não conecta no banco) |
-| `npm run prisma:studio` | Prisma Studio no banco do `.env.local` |
+| `npm run prisma:studio` | Prisma Studio, só no projeto Supabase da demonstração (destino validado) |
 | `npm run db:status` | banco de destino e o que é permitido nele (somente leitura) |
 | `npm run db:migrate -- --target=…` | `prisma migrate deploy` protegido (só banco vazio ou demo marcado) |
 | `npm run db:init -- --target=…` | grava o marcador de demonstração num banco novo e vazio |

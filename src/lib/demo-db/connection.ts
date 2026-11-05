@@ -5,6 +5,35 @@
  */
 
 /**
+ * Project Reference do projeto Supabase da demonstração Bella&Cheirosa.
+ * Não é segredo (aparece no usuário `postgres.<ref>` e na URL do painel); sem a
+ * senha, não dá acesso a nada. Fornecido pela dona do projeto em 2026-11-05.
+ * Os scripts de banco só aceitam URLs deste projeto.
+ */
+export const DEMO_SUPABASE_PROJECT_REF = 'jffzieabslosfkkxtvfy'
+
+/** Host do pooler compartilhado (Supavisor), ex.: `aws-0-sa-east-1.pooler.supabase.com`. */
+const SUPABASE_POOLER_HOST = /^aws-\d+-[a-z]{2}-[a-z]+-\d+\.pooler\.supabase\.com$/
+
+const TRANSACTION_POOLER_PORT = '6543'
+const SESSION_POOLER_PORT = '5432'
+
+/**
+ * Lista FECHADA de parâmetros de query por variável. Qualquer outro é recusado —
+ * inclusive os que o Prisma usa para mudar o destino (`host=`), o schema
+ * (`schema=`) ou a sessão (`options=`).
+ */
+const ALLOWED_PARAMS = {
+  transaction: ['pgbouncer', 'connection_limit', 'sslmode'],
+  session: ['sslmode'],
+} as const
+
+/** Nome de parâmetro seguro para aparecer numa mensagem (nunca valores). */
+function paramLabel(key: string): string {
+  return /^[a-z_]{1,32}$/i.test(key) ? `"${key}"` : '(nome inválido)'
+}
+
+/**
  * Faz o parse de uma URL de conexão sem vazar credenciais: o `TypeError` nativo
  * do Node carrega a URL inteira (com senha) no campo `input`; aqui ele é trocado
  * por um erro que cita só o NOME da variável.
@@ -36,48 +65,120 @@ export function withReadOnlyOption(url: string): string {
   return u.toString()
 }
 
-/** Ref do projeto Supabase (20 caracteres a-z) a partir de uma URL, ou `null`. */
-export function supabaseProjectRef(url: URL): string | null {
-  const host = url.hostname.toLowerCase()
-  const user = decodeURIComponent(url.username)
-  // Pooler compartilhado (Supavisor): usuário `postgres.<ref>`, host `*.pooler.supabase.com`.
-  if (host.endsWith('.pooler.supabase.com')) {
-    const m = user.match(/^[^.]+\.([a-z0-9]{20})$/)
-    return m ? m[1] : null
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
   }
-  // Conexão direta / pooler dedicado: host `db.<ref>.supabase.co`.
-  const m = host.match(/^db\.([a-z0-9]{20})\.supabase\.co$/)
-  return m ? m[1] : null
+}
+
+/** Problemas nos parâmetros de query e no fragmento. */
+function queryProblems(name: string, raw: string, url: URL, mode: 'transaction' | 'session'): string[] {
+  const problems: string[] = []
+
+  // Na URL de conexão, `#` cru só pode ser fragmento (na senha ele precisa vir
+  // codificado como %23). `url.hash` fica vazio para `#` sem conteúdo, então a
+  // checagem é feita no texto original.
+  if (raw.includes('#')) problems.push(`${name}: fragmento (#) não é permitido`)
+
+  const allowed: readonly string[] = ALLOWED_PARAMS[mode]
+  const seen = new Set<string>()
+  for (const key of url.searchParams.keys()) {
+    if (seen.has(key)) {
+      problems.push(`${name}: parâmetro ${paramLabel(key)} repetido`)
+      continue
+    }
+    seen.add(key)
+    if (!allowed.includes(key)) problems.push(`${name}: parâmetro ${paramLabel(key)} não é permitido`)
+  }
+
+  if (url.searchParams.get('sslmode') !== 'require') {
+    problems.push(`${name}: sslmode=require é obrigatório`)
+  }
+  if (mode === 'transaction') {
+    if (url.searchParams.get('pgbouncer') !== 'true') {
+      problems.push(`${name}: falta pgbouncer=true (obrigatório no Transaction pooler)`)
+    }
+    const limit = url.searchParams.get('connection_limit')
+    if (limit !== null && !/^[1-9]\d{0,2}$/.test(limit)) {
+      problems.push(`${name}: connection_limit deve ser um inteiro positivo`)
+    }
+  }
+  return problems
+}
+
+/** Problemas de uma URL de pooler. As mensagens citam só a variável e a regra. */
+function poolerProblems(
+  name: string,
+  raw: string,
+  url: URL,
+  mode: 'transaction' | 'session',
+  expectedRef: string,
+): string[] {
+  const problems: string[] = []
+  const host = url.hostname.toLowerCase()
+
+  if (host.endsWith('.supabase.co')) {
+    problems.push(`${name}: conexão direta (db.<ref>.supabase.co) não é aceita — use o pooler do Supabase`)
+  } else if (host.endsWith('.rlwy.net') || host.includes('railway')) {
+    problems.push(`${name}: aponta para o Railway — recusado`)
+  } else if (!SUPABASE_POOLER_HOST.test(host)) {
+    problems.push(`${name}: host não é um pooler do Supabase (aws-N-<região>.pooler.supabase.com)`)
+  }
+
+  if (safeDecode(url.username) !== `postgres.${expectedRef}`) {
+    problems.push(`${name}: usuário não corresponde ao projeto Supabase da demonstração`)
+  }
+  if (!url.password) problems.push(`${name}: senha ausente`)
+  if (url.pathname !== '/postgres') problems.push(`${name}: o database deve ser /postgres`)
+
+  const port = mode === 'transaction' ? TRANSACTION_POOLER_PORT : SESSION_POOLER_PORT
+  if (url.port !== port) {
+    problems.push(`${name}: porta deve ser ${port} (${mode === 'transaction' ? 'Transaction' : 'Session'} pooler)`)
+  }
+
+  problems.push(...queryProblems(name, raw, url, mode))
+  return problems
 }
 
 /**
- * Garante que `DATABASE_URL` e `DIRECT_URL` apontam para o MESMO banco, para que
- * o schema nunca seja aplicado num banco e os dados lidos/gravados em outro.
+ * Exige que `DATABASE_URL` e `DIRECT_URL` sejam os poolers do projeto Supabase da
+ * demonstração (`DEMO_SUPABASE_PROJECT_REF`):
  *
- * - Supabase: mesmo project ref (aceita os formatos reais do painel — Transaction
- *   pooler 6543, Session pooler 5432 e conexão direta `db.<ref>.supabase.co`) e
- *   mesmo database.
- * - Outros provedores: mesmo host, mesmo usuário e mesmo database (só a porta
- *   pode mudar).
+ * - `DATABASE_URL`: Transaction pooler — porta 6543, `pgbouncer=true`,
+ *   `connection_limit` opcional (inteiro positivo), `sslmode=require`; nenhum outro
+ *   parâmetro;
+ * - `DIRECT_URL`:   Session pooler — porta 5432, `sslmode=require`; nenhum outro
+ *   parâmetro;
+ * - as duas: host `aws-N-<região>.pooler.supabase.com` (o mesmo), usuário
+ *   `postgres.<ref esperado>`, senha presente, database `/postgres`, sem parâmetros
+ *   repetidos e sem fragmento `#`.
+ *
+ * Conexão direta (`db.<ref>.supabase.co`), Railway e qualquer outro host são
+ * recusados. Função pura: não conecta em nada.
  */
-export function assertSameDatabase(databaseUrl: string, directUrl: string): void {
+export function assertDemoPoolerPair(
+  databaseUrl: string,
+  directUrl: string,
+  expectedRef: string = DEMO_SUPABASE_PROJECT_REF,
+): void {
+  if (!/^[a-z0-9]{20}$/.test(expectedRef)) {
+    throw new Error('Project Reference esperado da demonstração inválido no código — recusado.')
+  }
   const a = parseConnectionUrl('DATABASE_URL', databaseUrl)
   const b = parseConnectionUrl('DIRECT_URL', directUrl)
-  const problems: string[] = []
 
-  const refA = supabaseProjectRef(a)
-  const refB = supabaseProjectRef(b)
-  if (refA || refB) {
-    if (!refA || !refB) problems.push('só uma das URLs é de um projeto Supabase reconhecível')
-    else if (refA !== refB) problems.push('projetos Supabase diferentes')
-  } else {
-    if (a.hostname.toLowerCase() !== b.hostname.toLowerCase()) problems.push('hosts diferentes')
-    if (decodeURIComponent(a.username) !== decodeURIComponent(b.username)) problems.push('usuários diferentes')
+  const problems = [
+    ...poolerProblems('DATABASE_URL', databaseUrl, a, 'transaction', expectedRef),
+    ...poolerProblems('DIRECT_URL', directUrl, b, 'session', expectedRef),
+  ]
+  if (a.hostname.toLowerCase() !== b.hostname.toLowerCase()) {
+    problems.push('DATABASE_URL e DIRECT_URL usam hosts de pooler diferentes')
   }
-  if (a.pathname !== b.pathname) problems.push('databases diferentes')
 
   if (problems.length) {
-    throw new Error(`DATABASE_URL e DIRECT_URL não apontam para o mesmo banco (${problems.join(', ')}).`)
+    throw new Error(`Destino do banco recusado:\n  - ${problems.join('\n  - ')}`)
   }
 }
 
