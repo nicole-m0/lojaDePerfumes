@@ -12,12 +12,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio",
-    "db:seed": "tsx prisma/seed.ts"
-  },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "prisma:studio": "node --env-file=.env.local node_modules/prisma/build/index.js studio",
+    "db:status": "tsx --env-file=.env.local scripts/demo-db.ts status",
+    "db:migrate": "tsx --env-file=.env.local scripts/demo-db.ts migrate",
+    "db:init": "tsx --env-file=.env.local scripts/demo-db.ts init",
+    "db:seed": "tsx --env-file=.env.local scripts/demo-db.ts seed",
+    "db:snapshot": "tsx scripts/legacy-snapshot.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.4",

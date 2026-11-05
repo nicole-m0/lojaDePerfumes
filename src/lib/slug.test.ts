@@ -6,6 +6,7 @@ describe('slugify', () => {
     expect(slugify('Perfumes Femininos')).toBe('perfumes-femininos')
     expect(slugify('Skincare, protetor solares')).toBe('skincare-protetor-solares')
     expect(slugify('  Óculos & Acessórios!  ')).toBe('oculos-acessorios')
-    expect(slugify('Quem Disse, Berenice?')).toBe('quem-disse-berenice')
+    expect(slugify('Tabaco & Mel, Nº 1?')).toBe('tabaco-mel-n-1')
+    expect(slugify('Ateliê Bella&Cheirosa')).toBe('atelie-bella-cheirosa')
   })
 })

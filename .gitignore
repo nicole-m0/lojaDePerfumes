@@ -55,3 +55,6 @@ prisma/*.db
 *.njsproj
 *.sln
 *.sw?
+
+# fotografias de segurança do banco (scripts/legacy-snapshot.ts)
+.snapshots

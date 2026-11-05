@@ -5,10 +5,9 @@ preços exibidos na demonstração são fictícios e nenhum pedido é entregue.
 
 **Stack:** Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui · Prisma · PostgreSQL · Auth.js (NextAuth v5) · Cloudinary.
 
-> **Fase 0** — migração da SPA Vite para Next.js full-stack (fundação de banco, auth e painel).
-> **Fase 1** — catálogo no banco (categorias, marcas, produtos, imagens, especificações),
-> CRUD no painel e upload de imagens via Cloudinary. A loja pública lê do banco e
-> reflete os filtros na URL; sem imagem real, cai no degradê + ícone da SPA original.
+Loja pública (catálogo, carrinho, checkout de teste) e painel administrativo (produtos,
+pedidos, estoque, financeiro), com catálogo e pedidos no PostgreSQL. A demonstração usa um
+banco exclusivo no Supabase e um catálogo fictício — veja [`docs/DATABASE.md`](docs/DATABASE.md).
 
 ## Identidade visual
 
@@ -31,16 +30,17 @@ mesmas cores pelas variáveis `--primary`, `--accent`, `--ring` etc. do mesmo ar
 ## Pré-requisitos
 
 - Node.js 22+
-- Um banco PostgreSQL (recomendado: [Railway](https://railway.app))
+- O banco PostgreSQL da demonstração (Supabase) — configuração em [`docs/DATABASE.md`](docs/DATABASE.md)
 
 ## Configuração
 
 ```bash
 npm install
-cp .env.example .env       # preencha DATABASE_URL, AUTH_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD
-npx auth secret            # gera e grava AUTH_SECRET no .env (ou defina manualmente)
-npm run prisma:migrate     # cria as tabelas (auth + catálogo)
-npm run db:seed            # cria o admin + popula o catálogo (data/products.ts)
+cp .env.example .env       # AUTH_SECRET, Cloudinary, dados da loja…
+# AUTH_SECRET: node -e "console.log(require('crypto').randomBytes(33).toString('base64'))"
+# .env.local: DATABASE_URL, DIRECT_URL e ADMIN_* — veja docs/DATABASE.md
+npm run db:status          # confere o banco de destino (somente leitura)
+# migrate / init / seed: somente conforme docs/DATABASE.md
 npm run dev
 ```
 
@@ -58,9 +58,13 @@ npm run dev
 | `npm run lint` | ESLint (`eslint-config-next`) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | testes (Vitest) |
-| `npm run prisma:migrate` | cria/aplica migrations no banco de desenvolvimento |
-| `npm run prisma:studio` | abre o Prisma Studio |
-| `npm run db:seed` | popula o usuário admin (usa `ADMIN_EMAIL` / `ADMIN_PASSWORD`) |
+| `npm run prisma:generate` | gera o Prisma Client (não conecta no banco) |
+| `npm run prisma:studio` | Prisma Studio no banco do `.env.local` |
+| `npm run db:status` | banco de destino e o que é permitido nele (somente leitura) |
+| `npm run db:migrate -- --target=…` | `prisma migrate deploy` protegido (só banco vazio ou demo marcado) |
+| `npm run db:init -- --target=…` | grava o marcador de demonstração num banco novo e vazio |
+| `npm run db:seed -- --target=…` | admin + catálogo fictício (`src/data/demo-catalog.ts`), só em banco demo |
+| `npm run db:snapshot` | fotografia somente leitura do banco da `DATABASE_URL` do `.env`; para o banco antigo, use o comando de `docs/DATABASE.md` |
 
 ## Estrutura
 
@@ -85,25 +89,31 @@ src/
 ├── server/                     # camada de dados (server-only): catalog.ts, guard.ts
 ├── context/                    # CartContext (carrinho em localStorage)
 ├── config/store.ts             # nome/WhatsApp/tagline (via env)
-├── data/products.ts            # catálogo de origem — usado só pelo seed
+├── data/demo-catalog.ts        # catálogo fictício — usado só pelo seed da demonstração
 ├── lib/                        # prisma, cloudinary, utils, format, slug, whatsapp
+│   └── demo-db/                # proteção de isolamento + seed do banco de demonstração
 ├── auth.ts / auth.config.ts    # configuração do Auth.js
 └── middleware.ts               # protege /admin/*
 
 prisma/
-├── schema.prisma               # auth + Setting + catálogo (Category/Brand/Product/…)
-└── seed.ts                     # usuário admin + catálogo a partir de data/products.ts
+├── schema.prisma               # auth + Setting + catálogo + pedidos/pagamentos/estoque…
+└── migrations/                 # aplicadas só com `npm run db:migrate` (migrate deploy)
+
+scripts/
+├── demo-db.ts                  # status / migrate / init / seed (todos protegidos)
+└── legacy-snapshot.ts          # fotografia de segurança (somente leitura)
 ```
 
 ## Deploy
 
-- **App:** Vercel (defina as variáveis do `.env.example` no projeto).
-- **Banco:** PostgreSQL no Railway (use a connection string interna em produção).
+- **App:** Vercel. A lista exata de variáveis (e as que **não** devem ir para a Vercel) está em `docs/DATABASE.md`.
+- **Banco:** PostgreSQL no Supabase (Prisma). Na Vercel, só `DATABASE_URL` (Transaction pooler,
+  porta 6543). Passo a passo em `docs/DATABASE.md`. Nunca rode `npx prisma` direto: use `npm run db:*`.
 
 ## Imagens (Cloudinary)
 
 Opcional para desenvolvimento — sem as chaves, o admin aceita URL de imagem colada
-e a loja usa o degradê + ícone como fallback. Para habilitar upload:
+e a loja mostra um substituto tipográfico com o nome do produto. Para habilitar upload:
 
 1. Crie uma conta em [cloudinary.com](https://cloudinary.com).
 2. Preencha `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`.
@@ -113,5 +123,5 @@ e a loja usa o degradê + ícone como fallback. Para habilitar upload:
 
 - Nome, slogan e WhatsApp da loja: variáveis `NEXT_PUBLIC_STORE_*`. **A variável tem prioridade sobre o
   padrão do código** — confira `NEXT_PUBLIC_STORE_NAME="Bella&Cheirosa"` no `.env` e na Vercel.
-- Catálogo: gerenciado no painel (`/admin/produtos`). `src/data/products.ts` é só a carga inicial do seed.
+- Catálogo: gerenciado no painel (`/admin/produtos`). `src/data/demo-catalog.ts` é só a carga inicial do seed.
 - Logo/ícones: `src/components/brand/Logo.tsx`, `src/app/icon.svg`, `src/app/apple-icon.tsx`.

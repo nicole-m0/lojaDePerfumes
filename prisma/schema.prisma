@@ -12,9 +12,16 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// Banco da demonstração: PostgreSQL no Supabase.
+// - DATABASE_URL: Transaction pooler (porta 6543, `?pgbouncer=true`) — usado pela app.
+// - DIRECT_URL:   Session pooler (porta 5432) — usado pelo Prisma CLI (migrations),
+//   que não funciona pelo pooler em modo transação.
+// Valores reais só em `.env.local` (local) e nas variáveis da Vercel. O Prisma CLI
+// NÃO lê `.env.local`: use os scripts `npm run db:*`, que o carregam explicitamente.
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ---------------------------------------------------------------------------

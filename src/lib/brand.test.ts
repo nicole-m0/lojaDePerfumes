@@ -66,4 +66,15 @@ describe('sem referências à identidade antiga', () => {
       .map((f) => relative(SRC, f))
     expect(offenders).toEqual([])
   })
+
+  it('nenhum arquivo de src/ cita as marcas reais do catálogo antigo', () => {
+    // A lista completa de nomes proibidos vive no teste do catálogo (único autorizado).
+    const denylistFile = ['data', 'demo-catalog.test.ts'].join(sep)
+    const offenders = walk(SRC)
+      .filter((f) => /\.(tsx?|css|svg|json)$/.test(f))
+      .filter((f) => relative(SRC, f) !== denylistFile && relative(SRC, f) !== ['lib', 'brand.test.ts'].join(sep))
+      .filter((f) => /\b(avon|botic[aá]rio|natura|hinode|berenice|blossom)\b/i.test(readFileSync(f, 'utf8')))
+      .map((f) => relative(SRC, f))
+    expect(offenders).toEqual([])
+  })
 })
