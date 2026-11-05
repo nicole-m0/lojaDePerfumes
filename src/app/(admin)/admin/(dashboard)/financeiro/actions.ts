@@ -48,7 +48,7 @@ export async function createExpenseAction(
   _prev: ExpenseFormState,
   formData: FormData,
 ): Promise<ExpenseFormState> {
-  await requireStaff()
+  await requireStaff('finance')
   const { data, error } = parseForm(formData)
   if (!data) return { error }
 
@@ -73,7 +73,7 @@ export async function updateExpenseAction(
   _prev: ExpenseFormState,
   formData: FormData,
 ): Promise<ExpenseFormState> {
-  await requireStaff()
+  await requireStaff('finance')
   const id = String(formData.get('id') ?? '')
   if (!id) return { error: 'Despesa não encontrada.' }
 
@@ -98,7 +98,7 @@ export async function updateExpenseAction(
 }
 
 export async function deleteExpenseAction(formData: FormData): Promise<void> {
-  await requireStaff()
+  await requireStaff('finance')
   const id = formData.get('id')
   if (typeof id !== 'string' || !id) return
 

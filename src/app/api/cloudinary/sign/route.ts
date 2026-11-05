@@ -1,13 +1,20 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/auth'
 import { cloudinary, cloudinaryConfigured } from '@/lib/cloudinary'
+import { ForbiddenError, requireStaff, UnauthenticatedError } from '@/server/guard'
 
 // Assina uploads diretos do navegador para o Cloudinary (usado pelo
-// CldUploadWidget no admin). Só para staff autenticado.
+// CldUploadWidget no admin). Só para usuário de equipe ATIVO (conferido no banco).
 export async function POST(request: Request) {
-  const session = await auth()
-  if (!session?.user) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  try {
+    await requireStaff('panel')
+  } catch (err) {
+    if (err instanceof UnauthenticatedError) {
+      return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+    }
+    if (err instanceof ForbiddenError) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
+    throw err
   }
   if (!cloudinaryConfigured) {
     return NextResponse.json({ error: 'cloudinary_not_configured' }, { status: 503 })

@@ -7,6 +7,7 @@ import { formatCents } from '@/lib/format'
 import { isLowStock } from '@/lib/stock'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { requireStaffPage } from '@/server/guard'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Produtos da categoria' }
@@ -22,6 +23,7 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 export default async function CategoryProductsPage({ params }: PageProps) {
+  await requireStaffPage()
   const { id } = await params
   const category = await getCategoryWithProducts(id)
   if (!category) notFound()

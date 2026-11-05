@@ -46,6 +46,8 @@ interface ProductFormProps {
   brands: Option[]
   initialValues: ProductFormValues
   submitLabel: string
+  /** Mostra o campo de custo (permissão `productCost`). O servidor ignora o campo sem ela. */
+  showCost: boolean
 }
 
 const ICON_OPTIONS = ['', 'perfume', 'gift', 'lipstick', 'lotion', 'soap', 'bag', 'sun', 'spray']
@@ -57,6 +59,7 @@ export default function ProductForm({
   brands,
   initialValues,
   submitLabel,
+  showCost,
 }: ProductFormProps) {
   const [state, formAction, isPending] = useActionState<ProductFormState, FormData>(saveProduct, {})
 
@@ -159,21 +162,23 @@ export default function ProductForm({
           />
         </div>
 
-        <div>
-          <Label htmlFor="costReais">Custo (opcional)</Label>
-          <Input
-            id="costReais"
-            name="costReais"
-            defaultValue={initialValues.costReais}
-            inputMode="decimal"
-            placeholder="60,00"
-            className="mt-1.5"
-          />
-          <p className="mt-1 text-xs text-muted-foreground">
-            Deixe em branco se o custo ainda não for conhecido — usado no Financeiro para
-            calcular margem. Não preencha com 0 a menos que o custo real seja zero.
-          </p>
-        </div>
+        {showCost && (
+          <div>
+            <Label htmlFor="costReais">Custo (opcional)</Label>
+            <Input
+              id="costReais"
+              name="costReais"
+              defaultValue={initialValues.costReais}
+              inputMode="decimal"
+              placeholder="60,00"
+              className="mt-1.5"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Deixe em branco se o custo ainda não for conhecido — usado no Financeiro para
+              calcular margem. Não preencha com 0 a menos que o custo real seja zero.
+            </p>
+          </div>
+        )}
 
         <div>
           <Label htmlFor="status">Status</Label>

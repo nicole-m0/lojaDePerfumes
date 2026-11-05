@@ -9,6 +9,8 @@ import DashboardPeriodFilter from '@/components/admin/DashboardPeriodFilter'
 import SimpleBarChart from '@/components/admin/SimpleBarChart'
 import OrderStatusBadge from '@/components/admin/OrderStatusBadge'
 import { isLowStock } from '@/lib/stock'
+import { can } from '@/lib/roles'
+import { requireStaffPage } from '@/server/guard'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Dashboard' }
@@ -28,17 +30,20 @@ const dayFmt = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digi
 const shortDay = (isoDay: string) => dayFmt.format(new Date(`${isoDay}T00:00:00`))
 
 interface PageProps {
-  searchParams: Promise<{ range?: string }>
+  searchParams: Promise<{ range?: string; acesso?: string }>
 }
 
 export default async function AdminDashboardPage({ searchParams }: PageProps) {
-  const { range: rangeParam } = await searchParams
+  const staff = await requireStaffPage()
+  const { range: rangeParam, acesso } = await searchParams
   const preset = resolvePeriodPreset(rangeParam)
+  const includeFinancials = can(staff.role, 'finance')
 
   const [counts, metrics] = await Promise.all([
     getDashboardCounts().catch(() => null),
-    getDashboardMetrics(preset).catch(() => null),
+    getDashboardMetrics(preset, { includeFinancials }).catch(() => null),
   ])
+  const revenue = metrics?.revenue ?? null
 
   const n = (v: number | undefined) => (counts ? v : '—')
   const label = periodLabel(preset).toLowerCase()
@@ -56,6 +61,12 @@ export default async function AdminDashboardPage({ searchParams }: PageProps) {
         </div>
         <DashboardPeriodFilter active={preset} />
       </div>
+
+      {acesso === 'negado' && (
+        <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive" role="alert">
+          Você não tem permissão para acessar aquela área do painel.
+        </p>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
@@ -121,37 +132,41 @@ export default async function AdminDashboardPage({ searchParams }: PageProps) {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardDescription>Faturamento recebido ({label})</CardDescription>
-                <CardTitle className="text-3xl">{formatCents(metrics.revenue.paidTotalCents)}</CardTitle>
-              </CardHeader>
-              <CardContent className="text-xs text-muted-foreground">
-                {metrics.revenue.paidOrderCount} pedido(s) pago(s) no período
-              </CardContent>
-            </Card>
+            {revenue && (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardDescription>Faturamento recebido ({label})</CardDescription>
+                    <CardTitle className="text-3xl">{formatCents(revenue.paidTotalCents)}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-xs text-muted-foreground">
+                    {revenue.paidOrderCount} pedido(s) pago(s) no período
+                  </CardContent>
+                </Card>
 
-            <Card>
-              <CardHeader>
-                <CardDescription>Ticket médio ({label})</CardDescription>
-                <CardTitle className="text-3xl">
-                  {formatCents(metrics.revenue.averageTicketCents)}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="text-xs text-muted-foreground">
-                Calculado só sobre pedidos pagos
-              </CardContent>
-            </Card>
+                <Card>
+                  <CardHeader>
+                    <CardDescription>Ticket médio ({label})</CardDescription>
+                    <CardTitle className="text-3xl">
+                      {formatCents(revenue.averageTicketCents)}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-xs text-muted-foreground">
+                    Calculado só sobre pedidos pagos
+                  </CardContent>
+                </Card>
 
-            <Card>
-              <CardHeader>
-                <CardDescription>A receber ({label})</CardDescription>
-                <CardTitle className="text-3xl">{formatCents(metrics.revenue.pendingTotalCents)}</CardTitle>
-              </CardHeader>
-              <CardContent className="text-xs text-muted-foreground">
-                Pedidos com pagamento pendente ou parcial
-              </CardContent>
-            </Card>
+                <Card>
+                  <CardHeader>
+                    <CardDescription>A receber ({label})</CardDescription>
+                    <CardTitle className="text-3xl">{formatCents(revenue.pendingTotalCents)}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-xs text-muted-foreground">
+                    Pedidos com pagamento pendente ou parcial
+                  </CardContent>
+                </Card>
+              </>
+            )}
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
@@ -166,20 +181,22 @@ export default async function AdminDashboardPage({ searchParams }: PageProps) {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardDescription>Faturamento recebido por dia ({label})</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <SimpleBarChart
-                  data={metrics.daily.map((d) => ({
-                    label: shortDay(d.date),
-                    value: d.paidRevenueCents,
-                  }))}
-                  formatValue={formatCents}
-                />
-              </CardContent>
-            </Card>
+            {revenue && (
+              <Card>
+                <CardHeader>
+                  <CardDescription>Faturamento recebido por dia ({label})</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <SimpleBarChart
+                    data={metrics.daily.map((d) => ({
+                      label: shortDay(d.date),
+                      value: d.paidRevenueCents,
+                    }))}
+                    formatValue={formatCents}
+                  />
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
@@ -208,10 +225,10 @@ export default async function AdminDashboardPage({ searchParams }: PageProps) {
                       .join(' · ')}
                   </p>
                 )}
-                {metrics.revenue.byMethod.length > 0 && (
+                {revenue && revenue.byMethod.length > 0 && (
                   <p className="mt-2 text-xs text-muted-foreground">
                     Pago via:{' '}
-                    {metrics.revenue.byMethod
+                    {revenue.byMethod
                       .map((m) => `${PAYMENT_METHOD_LABEL[m.method] ?? m.method} (${m.count})`)
                       .join(' · ')}
                   </p>

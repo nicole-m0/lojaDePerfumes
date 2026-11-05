@@ -25,7 +25,8 @@ export interface DashboardMetrics {
     byStatus: { key: string; count: number }[]
     bySource: { key: string; count: number }[]
   }
-  revenue: RevenueSummary & { byMethod: { method: string; count: number }[] }
+  /** `null` quando o usuário não tem a permissão `finance` (nem é calculado). */
+  revenue: (RevenueSummary & { byMethod: { method: string; count: number }[] }) | null
   stock: {
     totalProducts: number
     lowStockCount: number
@@ -34,8 +35,12 @@ export interface DashboardMetrics {
   daily: DailyMetric[]
 }
 
-export async function getDashboardMetrics(preset: PeriodPreset): Promise<DashboardMetrics> {
+export async function getDashboardMetrics(
+  preset: PeriodPreset,
+  options: { includeFinancials: boolean },
+): Promise<DashboardMetrics> {
   const range = resolveDateRange(preset)
+  const { includeFinancials } = options
 
   const [orders, products] = await Promise.all([
     prisma.order.findMany({
@@ -49,10 +54,13 @@ export async function getDashboardMetrics(preset: PeriodPreset): Promise<Dashboa
         // Sem `take: 1`: precisamos de todos os Payments para somar o valor efetivamente
         // pago (Parte 8 — um pedido pode ter N Payments). Ordenado por createdAt para que
         // `payments[0]` continue sendo o "primeiro pagamento" usado em paymentMethod.
-        payments: {
-          orderBy: { createdAt: 'asc' },
-          select: { method: true, status: true, amountCents: true },
-        },
+        // Valores pagos só para quem tem a permissão `finance`: sem ela, nem são lidos.
+        payments: includeFinancials
+          ? {
+              orderBy: { createdAt: 'asc' },
+              select: { method: true, status: true, amountCents: true },
+            }
+          : false,
       },
     }),
     prisma.product.findMany({ select: { id: true, name: true, stockOnHand: true } }),
@@ -64,8 +72,8 @@ export async function getDashboardMetrics(preset: PeriodPreset): Promise<Dashboa
     paymentStatus: order.paymentStatus,
     totalCents: order.totalCents,
     createdAt: order.createdAt,
-    paymentMethod: order.payments[0]?.method ?? null,
-    paidCents: order.payments
+    paymentMethod: order.payments?.[0]?.method ?? null,
+    paidCents: (order.payments ?? [])
       .filter((p) => p.status === 'PAID')
       .reduce((sum, p) => sum + p.amountCents, 0),
   }))
@@ -86,10 +94,12 @@ export async function getDashboardMetrics(preset: PeriodPreset): Promise<Dashboa
       byStatus,
       bySource: computeCountsByKey(normalized, 'source'),
     },
-    revenue: {
-      ...computeRevenueSummary(normalized),
-      byMethod: computePaymentMethodCounts(normalized),
-    },
+    revenue: includeFinancials
+      ? {
+          ...computeRevenueSummary(normalized),
+          byMethod: computePaymentMethodCounts(normalized),
+        }
+      : null,
     stock: {
       totalProducts: products.length,
       lowStockCount: lowStockProducts.length,

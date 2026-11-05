@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { ChevronLeft } from 'lucide-react'
 import { listBrandsForForm, listCategoriesForForm } from '@/server/catalog'
 import ProductForm, { type ProductFormValues } from '@/components/admin/ProductForm'
+import { requireStaffPage } from '@/server/guard'
+import { can } from '@/lib/roles'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Novo produto' }
@@ -29,6 +31,7 @@ const EMPTY: ProductFormValues = {
 }
 
 export default async function NewProductPage() {
+  const staff = await requireStaffPage()
   const [categories, brands] = await Promise.all([
     listCategoriesForForm().catch(() => []),
     listBrandsForForm().catch(() => []),
@@ -61,6 +64,7 @@ export default async function NewProductPage() {
           brands={brands}
           initialValues={EMPTY}
           submitLabel="Criar produto"
+          showCost={can(staff.role, 'productCost')}
         />
       )}
     </div>

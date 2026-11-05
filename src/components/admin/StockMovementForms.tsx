@@ -38,10 +38,13 @@ export function StockEntryForm({ productId }: { productId: string }) {
         <Label htmlFor="entry-reason">Motivo</Label>
         <select id="entry-reason" name="reason" defaultValue="PURCHASE" className={selectClass}>
           <option value="PURCHASE">Compra / reposição</option>
-          <option value="CUSTOMER_RETURN">Devolução de cliente</option>
           <option value="INVENTORY_COUNT">Contagem de inventário</option>
           <option value="OTHER">Outro</option>
         </select>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Devolução de mercadoria de um pedido: registre em &ldquo;Retorno físico&rdquo; na
+          página do pedido.
+        </p>
       </div>
 
       <div>

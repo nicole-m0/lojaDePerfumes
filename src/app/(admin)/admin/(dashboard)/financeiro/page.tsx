@@ -9,6 +9,7 @@ import { listExpenses } from '@/server/expenses'
 import { resolvePeriodPreset, periodLabel } from '@/lib/date-range'
 import { formatCents } from '@/lib/format'
 import DashboardPeriodFilter from '@/components/admin/DashboardPeriodFilter'
+import { requireStaffPage } from '@/server/guard'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Financeiro' }
@@ -20,6 +21,7 @@ interface PageProps {
 }
 
 export default async function FinancePage({ searchParams }: PageProps) {
+  await requireStaffPage('finance')
   const { range: rangeParam } = await searchParams
   const preset = resolvePeriodPreset(rangeParam)
   const label = periodLabel(preset).toLowerCase()

@@ -48,3 +48,75 @@ export function findInsufficientStockItems(
 ): StockAvailabilityItem[] {
   return items.filter((item) => item.requestedQuantity > item.availableQuantity)
 }
+
+// --- Histórico de estoque de UM pedido (por produto) -----------------------
+// Fonte da verdade para baixa e devolução ligadas a pedido: as movimentações
+// gravadas com `orderId`, e não o status do pedido. Assim confirmar, cancelar e
+// registrar retorno ficam idempotentes POR PRODUTO, inclusive em devoluções parciais.
+
+export interface OrderStockMovementInput {
+  productId: string
+  type: string
+  reason: string | null
+  quantity: number
+}
+
+export interface OrderStockBalance {
+  /** Unidades que saíram por venda deste pedido (OUTBOUND + SALE). */
+  out: number
+  /** Unidades que voltaram ao estoque por este pedido (RETURN, automático ou físico). */
+  back: number
+}
+
+/** Soma, por produto, as saídas por venda e as devoluções de um pedido. */
+export function summarizeOrderStockLedger(
+  movements: readonly OrderStockMovementInput[],
+): Map<string, OrderStockBalance> {
+  const ledger = new Map<string, OrderStockBalance>()
+  for (const m of movements) {
+    const isSale = m.type === 'OUTBOUND' && m.reason === 'SALE'
+    const isReturn = m.type === 'RETURN'
+    if (!isSale && !isReturn) continue
+    const entry = ledger.get(m.productId) ?? { out: 0, back: 0 }
+    if (isSale) entry.out += m.quantity
+    else entry.back += m.quantity
+    ledger.set(m.productId, entry)
+  }
+  return ledger
+}
+
+/** Quantidade pedida por produto (soma linhas repetidas do mesmo produto). */
+export function requiredQuantityByProduct(
+  items: readonly { productId: string; quantity: number }[],
+): Map<string, number> {
+  const required = new Map<string, number>()
+  for (const item of items) {
+    required.set(item.productId, (required.get(item.productId) ?? 0) + item.quantity)
+  }
+  return required
+}
+
+/** Unidades que ainda faltam sair, por produto, para atender o pedido (> 0). */
+export function quantitiesToDecrement(
+  required: ReadonlyMap<string, number>,
+  ledger: ReadonlyMap<string, OrderStockBalance>,
+): Map<string, number> {
+  const result = new Map<string, number>()
+  for (const [productId, qty] of required) {
+    const missing = qty - (ledger.get(productId)?.out ?? 0)
+    if (missing > 0) result.set(productId, missing)
+  }
+  return result
+}
+
+/** Unidades que saíram e ainda não voltaram, por produto (> 0). */
+export function pendingReturnByProduct(
+  ledger: ReadonlyMap<string, OrderStockBalance>,
+): Map<string, number> {
+  const result = new Map<string, number>()
+  for (const [productId, { out, back }] of ledger) {
+    const pending = out - back
+    if (pending > 0) result.set(productId, pending)
+  }
+  return result
+}

@@ -2,6 +2,8 @@ import 'server-only'
 import type { Prisma, PaymentMethod } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { canTransition, summarizePayments, type PaymentStatusValue } from '@/lib/payment-status'
+import { can } from '@/lib/roles'
+import { lockOrderRow, ORDER_TX_OPTIONS } from '@/server/order-lock'
 import type { StaffUser } from '@/server/guard'
 
 // Serviço central de pagamentos — toda mutação de Payment/Order.paymentStatus passa por
@@ -40,10 +42,9 @@ interface PaymentRow {
  * Precisa ser a PRIMEIRA operação da transação, antes de qualquer leitura de Payment.
  */
 async function lockOrder(tx: Tx, orderId: string): Promise<void> {
-  const rows = await tx.$queryRaw<{ id: string }[]>`
-    SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE
-  `
-  if (rows.length === 0) throw new PaymentServiceError('Pedido não encontrado.')
+  // Trava compartilhada (src/server/order-lock.ts) — a mesma usada pelas transições
+  // de status e de estoque do pedido.
+  if (!(await lockOrderRow(tx, orderId))) throw new PaymentServiceError('Pedido não encontrado.')
 }
 
 async function loadOrderWithPayments(tx: Tx, orderId: string) {
@@ -209,7 +210,7 @@ export async function createManualPayment(input: CreatePaymentInput) {
     ])
 
     return payment
-  })
+  }, ORDER_TX_OPTIONS)
 }
 
 // ---------------------------------------------------------------------------
@@ -230,7 +231,8 @@ export interface TransitionPaymentStatusInput {
  * chargeback, nem pelo caminho manual nem via reconsulta do Mercado Pago.
  */
 function assertCanReverse(toStatus: PaymentStatusValue, staff: StaffUser) {
-  if ((toStatus === 'REFUNDED' || toStatus === 'CHARGEBACK') && staff.role !== 'OWNER') {
+  // `staff.role` vem do banco (requireStaff), nunca do token da sessão.
+  if ((toStatus === 'REFUNDED' || toStatus === 'CHARGEBACK') && !can(staff.role, 'paymentReverse')) {
     throw new PaymentServiceError(
       'Apenas o proprietário (OWNER) pode registrar estorno ou chargeback.',
     )
@@ -278,7 +280,7 @@ export async function transitionPaymentStatus(input: TransitionPaymentStatusInpu
     await syncOrderPaymentStatus(tx, input.orderId, order.totalCents, nextPayments)
 
     return updated
-  })
+  }, ORDER_TX_OPTIONS)
 }
 
 // ---------------------------------------------------------------------------
@@ -516,5 +518,5 @@ export async function applyGatewayPaymentUpdate(
       nextPayments,
     )
     return { outcome: 'applied', paymentStatus: summary.status, paymentId: existing.id }
-  })
+  }, ORDER_TX_OPTIONS)
 }

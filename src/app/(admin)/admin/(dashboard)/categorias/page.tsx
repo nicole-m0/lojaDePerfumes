@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import TaxonomyCreateForm from '@/components/admin/TaxonomyCreateForm'
 import { deleteTaxonomy, renameTaxonomy } from './actions'
+import { requireStaffPage } from '@/server/guard'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Categorias & Marcas' }
@@ -59,6 +60,7 @@ function TaxonomyList({ kind, rows }: { kind: 'category' | 'brand'; rows: Row[] 
 }
 
 export default async function TaxonomyPage() {
+  await requireStaffPage()
   const [categories, brands] = await Promise.all([
     listCategoriesAdmin().catch(() => []),
     listBrandsAdmin().catch(() => []),

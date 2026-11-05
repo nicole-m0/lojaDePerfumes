@@ -4,6 +4,7 @@ import { listProductsStock } from '@/server/catalog'
 import { isLowStock } from '@/lib/stock'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { requireStaffPage } from '@/server/guard'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Estoque' }
@@ -15,6 +16,7 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 export default async function StockPage() {
+  await requireStaffPage()
   const products = await listProductsStock().catch(() => [])
   const lowCount = products.filter((p) => isLowStock(p.stockOnHand)).length
 

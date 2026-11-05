@@ -1,8 +1,9 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
 import { Boxes, LayoutDashboard, LogOut, Package, ShoppingCart, Tags, Wallet } from 'lucide-react'
-import { auth, signOut } from '@/auth'
+import { requireStaffPage } from '@/server/guard'
+import { signOutAction } from '@/server/session-actions'
+import { can, type Permission } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
 import Logo, { BrandMark } from '@/components/brand/Logo'
 
@@ -11,13 +12,13 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 }
 
-const NAV_LINKS = [
-  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/produtos', label: 'Produtos', icon: Package },
-  { href: '/admin/categorias', label: 'Categorias & Marcas', icon: Tags },
-  { href: '/admin/estoque', label: 'Estoque', icon: Boxes },
-  { href: '/admin/pedidos', label: 'Pedidos', icon: ShoppingCart },
-  { href: '/admin/financeiro', label: 'Financeiro', icon: Wallet },
+const NAV_LINKS: { href: string; label: string; icon: typeof Package; permission: Permission }[] = [
+  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, permission: 'panel' },
+  { href: '/admin/produtos', label: 'Produtos', icon: Package, permission: 'panel' },
+  { href: '/admin/categorias', label: 'Categorias & Marcas', icon: Tags, permission: 'panel' },
+  { href: '/admin/estoque', label: 'Estoque', icon: Boxes, permission: 'panel' },
+  { href: '/admin/pedidos', label: 'Pedidos', icon: ShoppingCart, permission: 'panel' },
+  { href: '/admin/financeiro', label: 'Financeiro', icon: Wallet, permission: 'finance' },
 ]
 
 const NAV_SOON = ['Clientes', 'Entregas', 'Configurações']
@@ -25,8 +26,11 @@ const NAV_SOON = ['Clientes', 'Entregas', 'Configurações']
 export default async function AdminDashboardLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const session = await auth()
-  if (!session?.user) redirect('/admin/login')
+  // O layout NÃO roda de novo na navegação entre páginas do painel: cada página
+  // chama requireStaffPage() por conta própria. Aqui serve ao menu e ao cabeçalho
+  // (mesma consulta da página, compartilhada via cache por requisição).
+  const staff = await requireStaffPage()
+  const links = NAV_LINKS.filter((l) => can(staff.role, l.permission))
 
   return (
     <div className="flex min-h-svh bg-muted/30">
@@ -37,7 +41,7 @@ export default async function AdminDashboardLayout({
         </Link>
 
         <nav className="flex flex-col gap-0.5">
-          {NAV_LINKS.map(({ href, label, icon: Icon }) => (
+          {links.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
@@ -68,15 +72,10 @@ export default async function AdminDashboardLayout({
           <span className="flex items-center gap-2 text-sm text-muted-foreground">
             {/* Sem sidebar no celular: o símbolo mantém a marca visível. */}
             <BrandMark className="size-6 md:hidden" title="Bella&Cheirosa" />
-            {session.user.email}
-            {session.user.role ? ` · ${session.user.role}` : ''}
+            {staff.email} · {staff.role}
           </span>
-          <form
-            action={async () => {
-              'use server'
-              await signOut({ redirectTo: '/admin/login' })
-            }}
-          >
+          {/* Logout só por POST (Server Action com conferência de origem). */}
+          <form action={signOutAction}>
             <Button type="submit" variant="ghost" size="sm">
               <LogOut className="size-4" />
               Sair

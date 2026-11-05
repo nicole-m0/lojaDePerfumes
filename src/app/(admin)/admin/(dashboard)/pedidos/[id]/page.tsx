@@ -3,7 +3,9 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ChevronLeft } from 'lucide-react'
 import { getAdminOrder } from '@/server/orders'
-import { requireStaff } from '@/server/guard'
+import { requireStaffPage } from '@/server/guard'
+import { getOrderPendingReturns } from '@/server/stock'
+import { can } from '@/lib/roles'
 import { isMercadoPagoConfigured } from '@/lib/mercadopago'
 import { formatCents } from '@/lib/format'
 import type { OrderStatusValue } from '@/lib/order-status'
@@ -15,6 +17,7 @@ import OrderStatusControl from '@/components/admin/OrderStatusControl'
 import PaymentControl from '@/components/admin/PaymentControl'
 import ShipmentForm from '@/components/admin/ShipmentForm'
 import OrderNoteForm from '@/components/admin/OrderNoteForm'
+import OrderReturnForm from '@/components/admin/OrderReturnForm'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Pedido' }
@@ -39,9 +42,21 @@ const fmtDate = (d: Date | null | undefined) => (d ? dateFmt.format(d) : '—')
 
 export default async function OrderDetailPage({ params }: PageProps) {
   const { id } = await params
-  const [order, staff] = await Promise.all([getAdminOrder(id), requireStaff()])
+  const staff = await requireStaffPage()
+  const [order, pendingReturns] = await Promise.all([getAdminOrder(id), getOrderPendingReturns(id)])
   if (!order) notFound()
-  const canReverse = staff.role === 'OWNER'
+  const canReverse = can(staff.role, 'paymentReverse')
+  // Retorno físico: só pedidos cancelados após o envio ou entregues, e só o que saiu
+  // e não voltou (o servidor recalcula tudo na hora de registrar).
+  const productNames = new Map(order.items.map((i) => [i.productId, i.productName]))
+  const returnLines =
+    order.status === 'CANCELED' || order.status === 'DELIVERED'
+      ? [...pendingReturns].map(([productId, pending]) => ({
+          productId,
+          productName: productNames.get(productId) ?? productId,
+          pending,
+        }))
+      : []
   const mercadoPagoEnabled = isMercadoPagoConfigured()
 
   return (
@@ -271,6 +286,21 @@ export default async function OrderDetailPage({ params }: PageProps) {
           </CardContent>
         </Card>
       </div>
+
+      {returnLines.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Retorno físico</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              Mercadoria enviada que ainda não voltou ao estoque. Registre só o que chegou
+              fisicamente; o retorno pode ser parcial.
+            </p>
+            <OrderReturnForm orderId={order.id} lines={returnLines} />
+          </CardContent>
+        </Card>
+      )}
 
       {order.invoices.length > 0 && (
         <Card>

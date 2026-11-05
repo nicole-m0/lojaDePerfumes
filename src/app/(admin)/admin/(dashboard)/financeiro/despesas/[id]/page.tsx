@@ -8,6 +8,7 @@ import { toDayKey } from '@/lib/date-range'
 import { deleteExpenseAction } from '@/app/(admin)/admin/(dashboard)/financeiro/actions'
 import ExpenseForm, { type ExpenseFormValues } from '@/components/admin/ExpenseForm'
 import { Button } from '@/components/ui/button'
+import { requireStaffPage } from '@/server/guard'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Editar despesa' }
@@ -17,6 +18,7 @@ interface PageProps {
 }
 
 export default async function EditExpensePage({ params }: PageProps) {
+  await requireStaffPage('finance')
   const { id } = await params
   const expense = await getExpense(id)
   if (!expense) notFound()

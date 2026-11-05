@@ -38,7 +38,12 @@ const noteSchema = z
 
 const entrySchema = z.object({
   productId: z.string().min(1),
-  reason: z.enum(['PURCHASE', 'CUSTOMER_RETURN', 'INVENTORY_COUNT', 'OTHER']),
+  // Sem CUSTOMER_RETURN: devolução de mercadoria de pedido é registrada SÓ pelo
+  // retorno físico na página do pedido (ligada ao pedido, limitada ao pendente).
+  // Uma entrada manual não ligada ao pedido somaria as mesmas unidades duas vezes.
+  reason: z.enum(['PURCHASE', 'INVENTORY_COUNT', 'OTHER'], {
+    errorMap: () => ({ message: 'Motivo inválido. Devoluções de pedido são registradas na página do pedido.' }),
+  }),
   quantity: z.coerce.number().int('Quantidade inválida.').min(1, 'Informe uma quantidade maior que zero.'),
   note: noteSchema,
 })

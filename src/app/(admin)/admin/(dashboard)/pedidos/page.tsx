@@ -5,6 +5,7 @@ import { formatCents } from '@/lib/format'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import OrderStatusBadge from '@/components/admin/OrderStatusBadge'
+import { requireStaffPage } from '@/server/guard'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Pedidos' }
@@ -17,6 +18,7 @@ const SOURCE_LABEL: Record<string, string> = {
 const dateFmt = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
 
 export default async function OrdersPage() {
+  await requireStaffPage()
   const orders = await listAdminOrders().catch(() => [])
 
   return (

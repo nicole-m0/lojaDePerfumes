@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma'
 import { reaisToCents } from '@/lib/format'
 import { slugify } from '@/lib/slug'
 import { requireStaff } from '@/server/guard'
+import { can } from '@/lib/roles'
 import { registerManualEntry } from '@/server/stock'
 import { removeProduct, type ProductRemovalOutcome } from '@/server/product-removal'
 
@@ -111,10 +112,16 @@ export async function saveProduct(
   if (priceCents <= 0) return { error: 'Preço inválido.' }
   const compareAtPriceCents = d.compareAtPriceReais ? reaisToCents(d.compareAtPriceReais) : null
 
+  // Custo é dado financeiro: só OWNER/ADMIN (permissão `productCost`) gravam. Para
+  // os demais, o valor recebido é DESCARTADO antes de qualquer validação (nem gera
+  // erro) — na edição o custo salvo é preservado (campo omitido do update); na
+  // criação o produto nasce sem custo (null).
+  const canEditCost = can(staff.role, 'productCost')
+
   // Custo (Fase 6): campo vazio = null ("não informado"), NUNCA 0. Só valida quando
   // preenchido — 0 explícito é aceito (produto com custo real zero é um caso legítimo).
   let costCents: number | null = null
-  if (d.costReais && d.costReais.trim() !== '') {
+  if (canEditCost && d.costReais && d.costReais.trim() !== '') {
     costCents = reaisToCents(d.costReais)
     if (costCents < 0) return { error: 'Custo inválido.' }
   }
@@ -129,7 +136,7 @@ export async function saveProduct(
     brandId: d.brandId,
     priceCents,
     compareAtPriceCents,
-    costCents,
+    ...(canEditCost ? { costCents } : d.id ? {} : { costCents: null }),
     status: d.status,
     featured: d.featured,
     iconKey: d.iconKey || null,

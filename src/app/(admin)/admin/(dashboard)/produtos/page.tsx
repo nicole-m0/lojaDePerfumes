@@ -8,6 +8,7 @@ import { isLowStock } from '@/lib/stock'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { requireStaffPage } from '@/server/guard'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Produtos' }
@@ -34,6 +35,7 @@ interface PageProps {
 }
 
 export default async function AdminProductsPage({ searchParams }: PageProps) {
+  await requireStaffPage()
   const { removido } = await searchParams
   const notice = removido ? REMOVAL_NOTICE[removido] : undefined
   const products = await listAdminProducts().catch(() => [])

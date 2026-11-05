@@ -3,11 +3,13 @@ import Link from 'next/link'
 import { ChevronLeft } from 'lucide-react'
 import ExpenseForm, { type ExpenseFormValues } from '@/components/admin/ExpenseForm'
 import { toDayKey } from '@/lib/date-range'
+import { requireStaffPage } from '@/server/guard'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Nova despesa' }
 
-export default function NewExpensePage() {
+export default async function NewExpensePage() {
+  await requireStaffPage('finance')
   const EMPTY: ExpenseFormValues = {
     description: '',
     category: '',

@@ -12,6 +12,7 @@ import {
   StockEntryForm,
   StockExitForm,
 } from '@/components/admin/StockMovementForms'
+import { requireStaffPage } from '@/server/guard'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Movimentação de estoque' }
@@ -40,6 +41,7 @@ const REASON_LABEL: Record<string, string> = {
 const dateFmt = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
 
 export default async function ProductStockPage({ params }: PageProps) {
+  await requireStaffPage()
   const { productId } = await params
   const [product, movements] = await Promise.all([
     getProductForStock(productId),

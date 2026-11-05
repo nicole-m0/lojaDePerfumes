@@ -8,7 +8,12 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 }
 
-export default function AdminLoginPage() {
+interface PageProps {
+  searchParams: Promise<{ acesso?: string }>
+}
+
+export default async function AdminLoginPage({ searchParams }: PageProps) {
+  const { acesso } = await searchParams
   return (
     <div className="bg-mesh flex min-h-svh items-center justify-center p-4">
       <Card className="w-full max-w-sm">
@@ -18,6 +23,12 @@ export default function AdminLoginPage() {
           <CardDescription>Acesso restrito à equipe</CardDescription>
         </CardHeader>
         <CardContent>
+          {acesso === 'encerrado' && (
+            <p className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive" role="alert">
+              Sua sessão foi encerrada: o acesso ao painel não está mais autorizado para
+              esta conta.
+            </p>
+          )}
           <LoginForm />
         </CardContent>
       </Card>

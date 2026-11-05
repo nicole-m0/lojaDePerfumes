@@ -4,13 +4,15 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireStaff } from '@/server/guard'
+import { whatsAppTemplateForStatus } from '@/lib/order-status'
+import { ORDER_TX_OPTIONS } from '@/server/order-lock'
 import {
-  canCancel,
-  canTransition,
-  whatsAppTemplateForStatus,
-  type OrderStatusValue,
-} from '@/lib/order-status'
-import { decrementStockForOrder, restoreStockForOrder, InsufficientStockError } from '@/server/stock'
+  cancelOrderInTx,
+  changeOrderStatusInTx,
+  OrderTransitionError,
+  registerOrderReturnInTx,
+  type TransitionResult,
+} from '@/server/order-transitions'
 import {
   createManualPayment,
   transitionPaymentStatus,
@@ -38,8 +40,10 @@ function revalidateOrder(id: string) {
   revalidatePath('/admin')
 }
 
+
 // ---------------------------------------------------------------------------
-// Status do pedido (fluxo linear — CANCELED tem ação própria)
+// Status do pedido e cancelamento — regras em src/server/order-transitions.ts
+// (trava do pedido, status condicional e estoque por produto pelo histórico).
 // ---------------------------------------------------------------------------
 
 const statusSchema = z.object({
@@ -61,61 +65,14 @@ export async function updateOrderStatus(
   if (!parsed.success) return { error: 'Dados inválidos.' }
   const { orderId, toStatus, note } = parsed.data
 
-  let orderNumber: number | undefined
-  let customerPhone: string | null | undefined
-
+  let result: TransitionResult
   try {
-    await prisma.$transaction(async (tx) => {
-      const order = await tx.order.findUnique({
-        where: { id: orderId },
-        select: {
-          status: true,
-          number: true,
-          customerPhone: true,
-          items: { select: { productId: true, productName: true, quantity: true } },
-        },
-      })
-      if (!order) throw new ActionError('Pedido não encontrado.')
-      const from = order.status as OrderStatusValue
-
-      if (toStatus === 'CANCELED') throw new ActionError('Use o cancelamento para cancelar o pedido.')
-      if (from === toStatus) throw new ActionError('O pedido já está nesse status.')
-      if (!canTransition(from, toStatus)) {
-        throw new ActionError(`Transição não permitida: ${from} → ${toStatus}.`)
-      }
-
-      // Baixa de estoque acontece exatamente uma vez, na confirmação — nunca na criação
-      // do pedido nem em transições posteriores (PROCESSING/SHIPPED/DELIVERED só herdam).
-      if (from === 'PENDING' && toStatus === 'CONFIRMED') {
-        try {
-          await decrementStockForOrder(tx, order.items, { orderId, userId: staff.id })
-        } catch (err) {
-          if (err instanceof InsufficientStockError) {
-            throw new ActionError(
-              `Não é possível confirmar: estoque insuficiente para "${err.productName}".`,
-            )
-          }
-          throw err
-        }
-      }
-
-      await tx.order.update({ where: { id: orderId }, data: { status: toStatus } })
-      await tx.orderEvent.create({
-        data: {
-          orderId,
-          type: 'ORDER_STATUS_CHANGED',
-          fromStatus: from,
-          toStatus,
-          note: note || null,
-          userId: staff.id,
-        },
-      })
-
-      orderNumber = order.number
-      customerPhone = order.customerPhone
-    })
+    result = await prisma.$transaction(
+      (tx) => changeOrderStatusInTx(tx, { orderId, toStatus, userId: staff.id, note: note || null }),
+      ORDER_TX_OPTIONS,
+    )
   } catch (err) {
-    if (err instanceof ActionError) return { error: err.message }
+    if (err instanceof OrderTransitionError) return { error: err.message }
     console.error('[updateOrderStatus]', err)
     return { error: 'Não foi possível atualizar o status.' }
   }
@@ -125,22 +82,18 @@ export async function updateOrderStatus(
   // Best-effort, depois que a transação já terminou com sucesso: uma falha aqui
   // nunca pode virar erro desta action (ver doc de sendOrderWhatsAppNotification).
   const templateName = whatsAppTemplateForStatus(toStatus)
-  if (templateName && orderNumber !== undefined) {
+  if (templateName) {
     await sendOrderWhatsAppNotification({
       orderId,
-      phone: customerPhone,
+      phone: result.customerPhone,
       templateName,
       languageCode: WHATSAPP_LANGUAGE_CODE,
-      bodyParams: [String(orderNumber)],
+      bodyParams: [String(result.number)],
     })
   }
 
   return { ok: true }
 }
-
-// ---------------------------------------------------------------------------
-// Cancelamento
-// ---------------------------------------------------------------------------
 
 const cancelSchema = z.object({
   orderId: z.string().min(1),
@@ -159,53 +112,14 @@ export async function cancelOrder(
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' }
   const { orderId, reason } = parsed.data
 
-  let orderNumber: number | undefined
-  let customerPhone: string | null | undefined
-
+  let result: TransitionResult
   try {
-    await prisma.$transaction(async (tx) => {
-      const order = await tx.order.findUnique({
-        where: { id: orderId },
-        select: {
-          status: true,
-          number: true,
-          customerPhone: true,
-          items: { select: { productId: true, productName: true, quantity: true } },
-        },
-      })
-      if (!order) throw new ActionError('Pedido não encontrado.')
-      const from = order.status as OrderStatusValue
-
-      if (from === 'CANCELED') throw new ActionError('O pedido já está cancelado.')
-      if (!canCancel(from)) throw new ActionError('Este pedido não pode mais ser cancelado.')
-
-      // Só devolve estoque se ele já tinha sido baixado (isto é, se o pedido já havia
-      // passado por CONFIRMED). Cancelar a partir de PENDING não mexe em estoque.
-      if (from !== 'PENDING') {
-        await restoreStockForOrder(tx, order.items, {
-          orderId,
-          orderNumber: order.number,
-          userId: staff.id,
-        })
-      }
-
-      await tx.order.update({ where: { id: orderId }, data: { status: 'CANCELED' } })
-      await tx.orderEvent.create({
-        data: {
-          orderId,
-          type: 'ORDER_STATUS_CHANGED',
-          fromStatus: from,
-          toStatus: 'CANCELED',
-          note: `Cancelamento: ${reason}`,
-          userId: staff.id,
-        },
-      })
-
-      orderNumber = order.number
-      customerPhone = order.customerPhone
-    })
+    result = await prisma.$transaction(
+      (tx) => cancelOrderInTx(tx, { orderId, reason, userId: staff.id }),
+      ORDER_TX_OPTIONS,
+    )
   } catch (err) {
-    if (err instanceof ActionError) return { error: err.message }
+    if (err instanceof OrderTransitionError) return { error: err.message }
     console.error('[cancelOrder]', err)
     return { error: 'Não foi possível cancelar o pedido.' }
   }
@@ -215,16 +129,59 @@ export async function cancelOrder(
   // Best-effort, depois que a transação já terminou com sucesso: uma falha aqui
   // nunca pode virar erro desta action (ver doc de sendOrderWhatsAppNotification).
   const templateName = whatsAppTemplateForStatus('CANCELED')
-  if (templateName && orderNumber !== undefined) {
+  if (templateName) {
     await sendOrderWhatsAppNotification({
       orderId,
-      phone: customerPhone,
+      phone: result.customerPhone,
       templateName,
       languageCode: WHATSAPP_LANGUAGE_CODE,
-      bodyParams: [String(orderNumber)],
+      bodyParams: [String(result.number)],
     })
   }
 
+  return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// Retorno físico — mercadoria enviada que voltou. Parcial, por produto, limitado
+// ao que saiu e ainda não voltou; responsável registrado na movimentação e no histórico.
+// ---------------------------------------------------------------------------
+
+const returnSchema = z.object({
+  orderId: z.string().min(1),
+  productId: z.string().min(1),
+  quantity: z.coerce.number().int('Quantidade inválida.').positive('Quantidade inválida.').max(9999),
+  note: z.string().trim().max(500).optional(),
+})
+
+export async function registerOrderReturn(
+  _prev: OrderActionState,
+  formData: FormData,
+): Promise<OrderActionState> {
+  const staff = await requireStaff()
+  const parsed = returnSchema.safeParse({
+    orderId: formData.get('orderId'),
+    productId: formData.get('productId'),
+    quantity: formData.get('quantity'),
+    note: (formData.get('note') as string) || undefined,
+  })
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' }
+  const { orderId, productId, quantity, note } = parsed.data
+
+  try {
+    await prisma.$transaction(
+      (tx) =>
+        registerOrderReturnInTx(tx, { orderId, productId, quantity, userId: staff.id, note: note || null }),
+      ORDER_TX_OPTIONS,
+    )
+  } catch (err) {
+    if (err instanceof OrderTransitionError) return { error: err.message }
+    console.error('[registerOrderReturn]', err)
+    return { error: 'Não foi possível registrar o retorno.' }
+  }
+
+  revalidateOrder(orderId)
+  revalidatePath('/admin/estoque')
   return { ok: true }
 }
 
@@ -337,7 +294,7 @@ export async function reconsultMercadoPagoPayment(
   _prev: OrderActionState,
   formData: FormData,
 ): Promise<OrderActionState> {
-  await requireStaff()
+  const staff = await requireStaff()
   const parsed = reconsultSchema.safeParse({ orderId: formData.get('orderId') })
   if (!parsed.success) return { error: 'Dados inválidos.' }
   const { orderId } = parsed.data
@@ -354,6 +311,16 @@ export async function reconsultMercadoPagoPayment(
     if (!order) return { error: 'Pedido não encontrado.' }
 
     const { found } = await reconcileOrderWithMercadoPago(orderId)
+    // Auditoria: quem pediu a reconsulta. As mudanças de pagamento que ela aplicar
+    // ficam registradas pelo serviço central como vindas do Mercado Pago.
+    await prisma.orderEvent.create({
+      data: {
+        orderId,
+        type: 'NOTE',
+        note: `Reconsulta ao Mercado Pago solicitada: ${found} pagamento(s) encontrado(s).`,
+        userId: staff.id,
+      },
+    })
     revalidateOrder(orderId)
     if (found === 0) {
       return { error: 'Nenhum pagamento encontrado no Mercado Pago para este pedido.' }

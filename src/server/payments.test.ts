@@ -360,6 +360,53 @@ describe('transitionPaymentStatus — gate OWNER para REFUNDED/CHARGEBACK', () =
     expect(orderById(order.id as string).paymentStatus).toBe(to)
   })
 
+  // Papéis reais da matriz (Etapa 1): só OWNER tem `paymentReverse`.
+  it.each([
+    ['ADMIN', 'REFUNDED'],
+    ['ADMIN', 'CHARGEBACK'],
+    ['STAFF', 'REFUNDED'],
+    ['STAFF', 'CHARGEBACK'],
+  ] as const)('%s NÃO consegue %s (nada é gravado)', async (role, to) => {
+    const order = order10k()
+    const pay = h.fake.seedPayment({
+      orderId: order.id,
+      status: 'PAID',
+      amountCents: 10000,
+      paidAt: new Date(),
+    })
+    const user = { id: `user_${role}`, email: `${role}@test`, name: null, role } as never
+
+    await expect(
+      transitionPaymentStatus({
+        orderId: order.id as string,
+        paymentId: pay.id as string,
+        toStatus: to,
+        note: null,
+        staff: user,
+      }),
+    ).rejects.toBeInstanceOf(PaymentServiceError)
+
+    expect(h.fake._state.payments[0].status).toBe('PAID')
+    expect(eventsFor(order.id as string)).toHaveLength(0)
+    expect(orderById(order.id as string).paymentStatus).toBe('PENDING')
+  })
+
+  it.each(['ADMIN', 'STAFF'] as const)('%s continua podendo marcar um pagamento como pago', async (role) => {
+    const order = order10k()
+    const pay = h.fake.seedPayment({ orderId: order.id, status: 'PENDING', amountCents: 10000 })
+    const user = { id: `user_${role}`, email: `${role}@test`, name: null, role } as never
+
+    const updated = await transitionPaymentStatus({
+      orderId: order.id as string,
+      paymentId: pay.id as string,
+      toStatus: 'PAID',
+      note: null,
+      staff: user,
+    })
+    expect(updated.status).toBe('PAID')
+    expect(eventsFor(order.id as string).at(-1)).toMatchObject({ userId: `user_${role}` })
+  })
+
   it('transição inválida é barrada ANTES do gate (mensagem "não permitida")', async () => {
     const order = order10k()
     const pay = h.fake.seedPayment({ orderId: order.id, status: 'PENDING', amountCents: 10000 })

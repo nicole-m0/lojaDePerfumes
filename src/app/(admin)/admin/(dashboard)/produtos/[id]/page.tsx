@@ -10,6 +10,8 @@ import {
 import { centsToReais } from '@/lib/format'
 import { deleteProduct } from '@/app/(admin)/admin/(dashboard)/produtos/actions'
 import ProductForm, { type ProductFormValues } from '@/components/admin/ProductForm'
+import { requireStaffPage } from '@/server/guard'
+import { can } from '@/lib/roles'
 import { Button } from '@/components/ui/button'
 
 export const dynamic = 'force-dynamic'
@@ -25,6 +27,8 @@ function reaisString(cents: number | null | undefined): string {
 }
 
 export default async function EditProductPage({ params }: PageProps) {
+  const staff = await requireStaffPage()
+  const showCost = can(staff.role, 'productCost')
   const { id } = await params
   const [product, categories, brands] = await Promise.all([
     getAdminProduct(id),
@@ -43,7 +47,8 @@ export default async function EditProductPage({ params }: PageProps) {
     brandId: product.brandId,
     priceReais: reaisString(product.priceCents),
     compareAtPriceReais: reaisString(product.compareAtPriceCents),
-    costReais: reaisString(product.costCents),
+    // Sem a permissão, o custo nem chega ao navegador.
+    costReais: showCost ? reaisString(product.costCents) : '',
     status: product.status,
     featured: product.featured,
     stockOnHand: product.stockOnHand,
@@ -91,6 +96,7 @@ export default async function EditProductPage({ params }: PageProps) {
         brands={brands}
         initialValues={initialValues}
         submitLabel="Salvar alterações"
+        showCost={showCost}
       />
     </div>
   )
