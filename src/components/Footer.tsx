@@ -1,70 +1,90 @@
-import { Link } from 'react-router-dom'
-import { Camera, MessageCircle } from 'lucide-react'
-import { STORE_WHATSAPP_NUMBER, STORE_TAGLINE } from '../config/store'
-import { categories } from '../data/products'
-import venusFlower from '../assets/venus-flower.png'
+import Link from 'next/link'
+import { STORE_NAME, STORE_TAGLINE } from '../config/store'
+import { isMercadoPagoConfigured } from '@/lib/mercadopago'
+import { buildWhatsAppUrl } from '@/lib/whatsapp'
+import { BrandMark } from './brand/Logo'
+import { Container } from './shop/ui'
 
-export default function Footer() {
+interface FooterProps {
+  categories: { name: string; slug: string }[]
+}
+
+export default function Footer({ categories }: FooterProps) {
+  // Texto de pagamento fiel à configuração real deste ambiente.
+  const paymentLine = isMercadoPagoConfigured()
+    ? 'Pagamento online pelo Mercado Pago'
+    : 'Pagamento combinado com a loja após o pedido'
+  // `null` sem número de WhatsApp válido configurado — o botão e a menção ao
+  // atendimento pelo WhatsApp somem.
+  const whatsappUrl = buildWhatsAppUrl()
+
+  const columnTitle = 'eyebrow mb-5 text-ivory/55'
+  const link = 'link-underline pb-0.5 text-ivory/85 hover:text-ivory'
+
   return (
-    <footer className="mt-16 border-t border-venus-100 bg-white">
-      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-3">
-        <div>
-          <Link to="/" className="flex items-center gap-1.5">
-            <img src={venusFlower} alt="" className="h-8 w-auto" />
-            <span className="font-script text-2xl text-venus-600">Vênus</span>
-          </Link>
-          <p className="mt-3 max-w-xs text-sm text-neutral-500">{STORE_TAGLINE}</p>
-          <div className="mt-4 flex gap-3">
+    <footer className="mt-24 bg-ink text-ivory">
+      <Container className="grid gap-12 py-16 md:grid-cols-12 md:gap-8 lg:py-20">
+        <div className="md:col-span-5">
+          <BrandMark
+            className="h-10 w-10"
+            bottleColor="var(--color-ivory)"
+            accentColor="var(--color-champagne-300)"
+          />
+          <p className="mt-6 max-w-sm font-display text-3xl leading-tight text-ivory">
+            {STORE_TAGLINE}
+          </p>
+          {whatsappUrl && (
             <a
-              href={`https://wa.me/${STORE_WHATSAPP_NUMBER}`}
+              href={whatsappUrl}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="WhatsApp"
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-venus-50 text-venus-600 transition hover:bg-venus-100"
+              className="mt-8 inline-flex h-11 items-center border border-ivory/35 px-6 text-[0.75rem] font-semibold uppercase tracking-[0.16em] text-ivory transition-colors hover:bg-ivory hover:text-ink"
             >
-              <MessageCircle className="h-4.5 w-4.5" />
+              Fale conosco no WhatsApp
             </a>
-            <a
-              href="https://instagram.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Instagram"
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-venus-50 text-venus-600 transition hover:bg-venus-100"
-            >
-              <Camera className="h-4.5 w-4.5" />
-            </a>
-          </div>
+          )}
         </div>
 
-        <div>
-          <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-neutral-400">
-            Categorias
-          </h4>
-          <ul className="space-y-2 text-sm text-neutral-500">
+        <nav aria-labelledby="rodape-colecoes" className="md:col-span-3">
+          <h2 id="rodape-colecoes" className={columnTitle}>
+            Coleções
+          </h2>
+          <ul className="space-y-3 text-sm">
+            <li>
+              <Link href="/#catalogo" className={link}>
+                Todos os produtos
+              </Link>
+            </li>
             {categories.slice(0, 6).map((category) => (
-              <li key={category}>
-                <Link to={`/?categoria=${encodeURIComponent(category)}`} className="hover:text-venus-600">
-                  {category}
+              <li key={category.slug}>
+                <Link href={`/?categoria=${encodeURIComponent(category.name)}`} className={link}>
+                  {category.name}
                 </Link>
               </li>
             ))}
           </ul>
-        </div>
+        </nav>
 
-        <div>
-          <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-neutral-400">
-            Atendimento
-          </h4>
-          <ul className="space-y-2 text-sm text-neutral-500">
-            <li>Segunda a sábado, 9h às 19h</li>
-            <li>Entregas para todo o Brasil</li>
-            <li>Compra 100% segura</li>
+        <div className="md:col-span-4">
+          <h2 className={columnTitle}>Como funciona</h2>
+          <ul className="space-y-3 text-sm text-ivory/85">
+            <li>Frete calculado no checkout, a partir do CEP</li>
+            <li>{paymentLine}</li>
+            {whatsappUrl && <li>Atendimento pelo WhatsApp</li>}
           </ul>
         </div>
-      </div>
+      </Container>
 
-      <div className="border-t border-venus-50 py-4 text-center text-xs text-neutral-400">
-        © {new Date().getFullYear()} Loja Vênus. Todos os direitos reservados.
+      <div className="border-t border-ivory/15">
+        <Container className="flex flex-col gap-3 py-6 text-xs text-ivory/60 md:flex-row md:items-center md:justify-between">
+          <p>
+            © {new Date().getFullYear()} {STORE_NAME}
+          </p>
+          {/* Recuo à direita: não fica sob o botão flutuante do WhatsApp. */}
+          <p className="max-w-xl pr-14 md:pr-16 md:text-right">
+            Loja demonstrativa — projeto de portfólio. Nenhum pedido é entregue.
+          </p>
+        </Container>
       </div>
     </footer>
   )

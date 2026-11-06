@@ -1,0 +1,188 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createHmac } from 'node:crypto'
+
+vi.mock('server-only', () => ({}))
+
+import {
+  buildPreferencePayload,
+  getPublicBaseUrl,
+  getMercadoPagoPayment,
+  isMercadoPagoConfigured,
+  isValidMercadoPagoPaymentId,
+  verifyWebhookSignature,
+} from './mercadopago'
+
+const ORIG = { ...process.env }
+afterEach(() => {
+  process.env = { ...ORIG }
+})
+
+describe('isMercadoPagoConfigured', () => {
+  it('true só quando há MERCADOPAGO_ACCESS_TOKEN', () => {
+    delete process.env.MERCADOPAGO_ACCESS_TOKEN
+    expect(isMercadoPagoConfigured()).toBe(false)
+    process.env.MERCADOPAGO_ACCESS_TOKEN = 'TEST-123'
+    expect(isMercadoPagoConfigured()).toBe(true)
+  })
+})
+
+describe('buildPreferencePayload', () => {
+  beforeEach(() => {
+    process.env.AUTH_URL = 'https://loja.example.com'
+  })
+
+  it('usa Order.id como external_reference e o total do pedido em reais', () => {
+    const p = buildPreferencePayload({
+      orderId: 'ord_abc',
+      orderNumber: 42,
+      totalCents: 12990,
+      currency: 'BRL',
+    })
+    expect(p.external_reference).toBe('ord_abc')
+    expect(p.items).toHaveLength(1)
+    expect(p.items[0].unit_price).toBe(129.9)
+    expect(p.items[0].quantity).toBe(1)
+    expect(p.items[0].currency_id).toBe('BRL')
+  })
+
+  it('notification_url aponta para a rota do webhook', () => {
+    const p = buildPreferencePayload({ orderId: 'o1', orderNumber: 1, totalCents: 100, currency: 'BRL' })
+    expect(p.notification_url).toBe('https://loja.example.com/api/webhooks/mercadopago')
+    expect(p.back_urls.success).toBe('https://loja.example.com/checkout/sucesso?pedido=1')
+    expect(p.back_urls.failure).toBe('https://loja.example.com/checkout/falha?pedido=1')
+    expect(p.back_urls.pending).toBe('https://loja.example.com/checkout/pendente?pedido=1')
+  })
+
+  it('leva o token de confirmação nas back_urls quando informado', () => {
+    const p = buildPreferencePayload({
+      orderId: 'o1',
+      orderNumber: 1,
+      totalCents: 100,
+      currency: 'BRL',
+      accessToken: 'abcDEF_-0123456789abcdefghijklmn',
+    })
+    const q = '?pedido=1&token=abcDEF_-0123456789abcdefghijklmn'
+    expect(p.back_urls.success).toBe(`https://loja.example.com/checkout/sucesso${q}`)
+    expect(p.back_urls.failure).toBe(`https://loja.example.com/checkout/falha${q}`)
+    expect(p.back_urls.pending).toBe(`https://loja.example.com/checkout/pendente${q}`)
+  })
+
+  it('auto_return só com base HTTPS', () => {
+    process.env.AUTH_URL = 'https://loja.example.com'
+    expect(buildPreferencePayload({ orderId: 'o', orderNumber: 1, totalCents: 100, currency: 'BRL' }).auto_return).toBe(
+      'approved',
+    )
+    process.env.AUTH_URL = 'http://localhost:3000'
+    expect(
+      buildPreferencePayload({ orderId: 'o', orderNumber: 1, totalCents: 100, currency: 'BRL' }).auto_return,
+    ).toBeUndefined()
+  })
+
+  it('currency vazia cai em BRL', () => {
+    const p = buildPreferencePayload({ orderId: 'o', orderNumber: 1, totalCents: 100, currency: '' })
+    expect(p.items[0].currency_id).toBe('BRL')
+  })
+})
+
+describe('getPublicBaseUrl', () => {
+  it('remove barra final e usa default local', () => {
+    process.env.AUTH_URL = 'https://x.com/'
+    expect(getPublicBaseUrl()).toBe('https://x.com')
+    delete process.env.AUTH_URL
+    expect(getPublicBaseUrl()).toBe('http://localhost:3000')
+  })
+})
+
+describe('verifyWebhookSignature', () => {
+  const secret = 'super-secret'
+  const dataId = '123456'
+  const xRequestId = 'req-abc-1'
+  const ts = '1700000000'
+
+  function sign(id: string) {
+    const manifest = `id:${id.toLowerCase()};request-id:${xRequestId};ts:${ts};`
+    return createHmac('sha256', secret).update(manifest).digest('hex')
+  }
+
+  it('aceita assinatura válida', () => {
+    const v1 = sign(dataId)
+    expect(
+      verifyWebhookSignature({
+        xSignature: `ts=${ts},v1=${v1}`,
+        xRequestId,
+        dataId,
+        secret,
+      }),
+    ).toBe(true)
+  })
+
+  it('rejeita v1 adulterado', () => {
+    expect(
+      verifyWebhookSignature({
+        xSignature: `ts=${ts},v1=${'0'.repeat(64)}`,
+        xRequestId,
+        dataId,
+        secret,
+      }),
+    ).toBe(false)
+  })
+
+  it('rejeita quando falta header, dataId ou segredo', () => {
+    const v1 = sign(dataId)
+    const good = { xSignature: `ts=${ts},v1=${v1}`, xRequestId, dataId, secret }
+    expect(verifyWebhookSignature({ ...good, xSignature: null })).toBe(false)
+    expect(verifyWebhookSignature({ ...good, xRequestId: null })).toBe(false)
+    expect(verifyWebhookSignature({ ...good, dataId: null })).toBe(false)
+    expect(verifyWebhookSignature({ ...good, secret: null })).toBe(false)
+    expect(verifyWebhookSignature({ ...good, secret: '' })).toBe(false)
+  })
+
+  it('rejeita x-signature sem ts/v1', () => {
+    expect(verifyWebhookSignature({ xSignature: 'garbage', xRequestId, dataId, secret })).toBe(false)
+  })
+
+  it('assinatura de outro request-id não vale para este', () => {
+    const v1 = sign(dataId)
+    expect(
+      verifyWebhookSignature({ xSignature: `ts=${ts},v1=${v1}`, xRequestId: 'req-OUTRO', dataId, secret }),
+    ).toBe(false)
+  })
+})
+
+describe('isValidMercadoPagoPaymentId (Etapa D3)', () => {
+  it.each(['1', '123456789012', '1'.repeat(20)])('aceita %j', (id) => {
+    expect(isValidMercadoPagoPaymentId(id)).toBe(true)
+  })
+
+  it.each([null, undefined, 123, '', ' 1', '1 ', '-1', '1.5', 'abc', '12a', '../1', '1/2', '1%2F2', '1'.repeat(21)])(
+    'recusa %j',
+    (id) => {
+      expect(isValidMercadoPagoPaymentId(id)).toBe(false)
+    },
+  )
+})
+
+describe('getMercadoPagoPayment — live_mode (Etapa D3)', () => {
+  beforeEach(() => {
+    process.env.MERCADOPAGO_ACCESS_TOKEN = 'TEST-token-falso'
+  })
+
+  function stubFetch(body: Record<string, unknown>) {
+    return vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }),
+    )
+  }
+  const raw = { id: 1, status: 'approved', external_reference: 'ord', transaction_amount: 10, currency_id: 'BRL' }
+
+  it.each([
+    [true, true],
+    [false, false],
+    [undefined, null],
+    ['true', null],
+  ])('live_mode=%j → liveMode %j', async (liveMode, expected) => {
+    const spy = stubFetch(liveMode === undefined ? raw : { ...raw, live_mode: liveMode })
+    const payment = await getMercadoPagoPayment('1')
+    expect(payment?.liveMode).toBe(expected)
+    spy.mockRestore()
+  })
+})

@@ -1,0 +1,270 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* ---------------------------------------------------------------------------
+   Design system Bella&Cheirosa
+   Direção: "ateliê de perfumaria" — sofisticado, feminino e comercial, sem
+   excesso decorativo. Bordô-rosé como cor de marca, champanhe como acento fino,
+   fundo marfim e tinta ameixa-escura no lugar do preto puro.
+   Tipografia: Cormorant Garamond (títulos/marca) + Manrope (interface/texto),
+   carregadas via next/font em src/app/layout.tsx (variáveis --font-cormorant e
+   --font-manrope).
+   --------------------------------------------------------------------------- */
+@theme {
+  /* Bordô-rosé — cor de marca (botões, links, destaques). 600 = primária. */
+  --color-brand-50: #fbf4f6;
+  --color-brand-100: #f5e4e9;
+  --color-brand-200: #ebc8d2;
+  --color-brand-300: #dca1b2;
+  --color-brand-400: #c77a91;
+  --color-brand-500: #ae5875;
+  --color-brand-600: #92425f;
+  --color-brand-700: #77344d;
+  --color-brand-800: #5e2a3e;
+  --color-brand-900: #44202e;
+
+  /* Champanhe — acento (o "&" da marca, selos, detalhes). Usar com parcimônia. */
+  --color-champagne-50: #fbf7ef;
+  --color-champagne-100: #f4ead6;
+  --color-champagne-200: #e9d5ae;
+  --color-champagne-300: #d9ba80;
+  --color-champagne-400: #c49e5a;
+  --color-champagne-500: #a98242;
+  --color-champagne-600: #8a6935;
+  --color-champagne-700: #6c522b;
+
+  /* Neutros quentes. O marfim é o fundo dominante; "sand" alterna seções e
+     fundos de imagem; "ink" é o texto e o bloco escuro (rodapé, faixa editorial). */
+  --color-ivory: #fbf8f5;
+  --color-sand-50: #f6f1ec;
+  --color-sand-100: #efe7df;
+  --color-sand-200: #e2d6cc;
+  --color-sand-300: #c9b8aa;
+  --color-ink: #2a1f24;
+  --color-ink-soft: #5b4d53;
+  /* Filete (divisórias de 1px) — tinta com baixa opacidade. */
+  --color-hairline: rgba(42, 31, 36, 0.14);
+
+  /* Sombras suaves, tingidas de ameixa (substituem o antigo "glow" neon). */
+  --shadow-glow: 0 1px 2px rgba(68, 32, 46, 0.06), 0 10px 28px -14px rgba(68, 32, 46, 0.35);
+  --shadow-glow-lg: 0 2px 4px rgba(68, 32, 46, 0.05), 0 22px 48px -20px rgba(68, 32, 46, 0.4);
+
+}
+
+/* Fontes vindas do next/font (variáveis definidas na tag <html>). */
+@theme inline {
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-cormorant), 'Cormorant Garamond', Georgia, serif;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------------------------------------------------------------------------
+   Tokens do shadcn/ui (usados só no painel administrativo por enquanto).
+   --------------------------------------------------------------------------- */
+:root {
+  --radius: 0.625rem;
+  --background: #ffffff;
+  --foreground: #2a1f24;
+  --card: #ffffff;
+  --card-foreground: #2a1f24;
+  --popover: #ffffff;
+  --popover-foreground: #2a1f24;
+  --primary: #92425f;
+  --primary-foreground: #fbf4f6;
+  --secondary: #f5f0ec;
+  --secondary-foreground: #2a1f24;
+  --muted: #f5f0ec;
+  --muted-foreground: #75676d;
+  --accent: #f5e4e9;
+  --accent-foreground: #77344d;
+  --destructive: #e7000b;
+  --border: #ece4e0;
+  --input: #e3d9d4;
+  --ring: #dca1b2;
+  --sidebar: #fbf8f5;
+  --sidebar-foreground: #2a1f24;
+  --sidebar-primary: #92425f;
+  --sidebar-primary-foreground: #fbf4f6;
+  --sidebar-accent: #f5e4e9;
+  --sidebar-accent-foreground: #77344d;
+  --sidebar-border: #ece4e0;
+  --sidebar-ring: #dca1b2;
+}
+
+.dark {
+  --background: #1d1519;
+  --foreground: #fafafa;
+  --card: #2a1f24;
+  --card-foreground: #fafafa;
+  --popover: #2a1f24;
+  --popover-foreground: #fafafa;
+  --primary: #dca1b2;
+  --primary-foreground: #2a1f24;
+  --secondary: #3a2a31;
+  --secondary-foreground: #fafafa;
+  --muted: #3a2a31;
+  --muted-foreground: #b8a8ae;
+  --accent: #3a2a31;
+  --accent-foreground: #fafafa;
+  --destructive: #ff6467;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.15);
+  --ring: #77344d;
+  --sidebar: #2a1f24;
+  --sidebar-foreground: #fafafa;
+  --sidebar-primary: #dca1b2;
+  --sidebar-primary-foreground: #2a1f24;
+  --sidebar-accent: #3a2a31;
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-ring: #77344d;
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* ---------------------------------------------------------------------------
+   Estilos base — dentro de @layer base para que as classes utilitárias do
+   Tailwind (@layer utilities) sempre prevaleçam sobre eles.
+   --------------------------------------------------------------------------- */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background: var(--color-ivory);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Títulos de página/seção na fonte de marca (loja e painel). */
+  h1,
+  h2 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+    /* A Cormorant usa algarismos "old-style" por padrão ("100ml" vira "1ooml"). */
+    font-variant-numeric: lining-nums;
+  }
+
+  /* O utilitário font-display vem do tema; aqui só os algarismos alinhados. */
+  .font-display {
+    font-variant-numeric: lining-nums;
+  }
+
+  ::selection {
+    background: var(--color-brand-100);
+    color: var(--color-brand-900);
+  }
+
+  /* Foco visível e consistente na loja pública (o painel usa o do shadcn). */
+  [data-surface='shop'] :focus-visible {
+    outline: 2px solid var(--color-brand-600);
+    outline-offset: 3px;
+  }
+}
+
+/* Utilitários editoriais da loja. */
+/* Rótulo pequeno em caixa-alta (sobretítulos, marca do produto, colunas). */
+@utility eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* Sublinhado que cresce no hover — links de texto editoriais. */
+@utility link-underline {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition: background-size 0.3s ease;
+  &:hover,
+  &:focus-visible {
+    background-size: 100% 1px;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-sand-200);
+  border-radius: 999px;
+  border: 2px solid var(--color-ivory);
+}
+
+/* Fundo do login do painel: véu rosé + champanhe, discreto. */
+.bg-mesh {
+  background-color: var(--color-brand-50);
+  background-image:
+    radial-gradient(at 12% 18%, rgba(220, 161, 178, 0.35) 0px, transparent 55%),
+    radial-gradient(at 88% 8%, rgba(233, 213, 174, 0.45) 0px, transparent 50%),
+    radial-gradient(at 60% 100%, rgba(245, 228, 233, 0.9) 0px, transparent 60%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

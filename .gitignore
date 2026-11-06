@@ -1,4 +1,26 @@
-# Logs
+# dependencies
+node_modules
+.pnp
+.pnp.js
+
+# testing
+coverage
+
+# next.js
+.next
+out
+build
+dist
+dist-ssr
+
+# production
+*.local
+
+# misc
+.DS_Store
+*.pem
+
+# debug logs
 logs
 *.log
 npm-debug.log*
@@ -7,18 +29,32 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Editor directories and files
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# prisma
+prisma/*.db
+
+# editor
 .vscode/*
 !.vscode/extensions.json
 .idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# fotografias de segurança do banco (scripts/legacy-snapshot.ts)
+.snapshots
