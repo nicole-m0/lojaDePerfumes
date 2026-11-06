@@ -27,6 +27,8 @@ export default function ProductDetailView({ product, related }: ProductDetailVie
   const maxQty = product.availableQuantity
   const soldOut = isOutOfStock(maxQty)
   const atMax = quantity >= maxQty
+  // `null` sem número de WhatsApp válido configurado — o link some.
+  const whatsappUrl = buildWhatsAppUrl(buildProductMessage(product, quantity))
 
   const handleAddToCart = () => {
     if (soldOut) return
@@ -167,14 +169,16 @@ export default function ProductDetailView({ product, related }: ProductDetailVie
                     Quantidade máxima disponível: {maxQty}.
                   </p>
                 )}
-                <a
-                  href={buildWhatsAppUrl(buildProductMessage(product, quantity))}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="link-underline mt-5 inline-block pb-0.5 text-sm font-medium text-ink"
-                >
-                  Prefere comprar pelo WhatsApp? Fale com a loja →
-                </a>
+                {whatsappUrl && (
+                  <a
+                    href={whatsappUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="link-underline mt-5 inline-block pb-0.5 text-sm font-medium text-ink"
+                  >
+                    Prefere comprar pelo WhatsApp? Fale com a loja →
+                  </a>
+                )}
               </div>
             )}
 

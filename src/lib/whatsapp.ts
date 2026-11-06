@@ -2,8 +2,15 @@ import { STORE_NAME, STORE_WHATSAPP_NUMBER } from '../config/store'
 import type { CartItem, Product } from '../types'
 import { formatPrice } from './format'
 
-export function buildWhatsAppUrl(message: string): string {
-  return `https://wa.me/${STORE_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`
+/**
+ * Único ponto que monta URLs `wa.me` da loja. Devolve `null` quando não há número
+ * válido configurado (NEXT_PUBLIC_STORE_WHATSAPP_NUMBER) — quem chama oculta o link.
+ * Sem `message`, gera o link de contato simples (sem texto).
+ */
+export function buildWhatsAppUrl(message?: string): string | null {
+  if (!STORE_WHATSAPP_NUMBER) return null
+  const base = `https://wa.me/${STORE_WHATSAPP_NUMBER}`
+  return message === undefined ? base : `${base}?text=${encodeURIComponent(message)}`
 }
 
 export function buildCartMessage(items: CartItem[], total: number): string {

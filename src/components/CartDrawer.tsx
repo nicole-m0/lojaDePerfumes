@@ -22,6 +22,10 @@ export default function CartDrawer() {
     return () => document.removeEventListener('keydown', onKey)
   }, [isOpen, closeCart])
 
+  // `null` sem número de WhatsApp válido configurado (ou sacola vazia) — o link some.
+  const whatsappUrl =
+    items.length > 0 ? buildWhatsAppUrl(buildCartMessage(items, totalPrice)) : null
+
   return (
     <>
       <div
@@ -155,14 +159,16 @@ export default function CartDrawer() {
                 >
                   Ver sacola completa
                 </Link>
-                <a
-                  href={buildWhatsAppUrl(buildCartMessage(items, totalPrice))}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="link-underline pb-0.5 font-medium text-ink"
-                >
-                  Finalizar no WhatsApp
-                </a>
+                {whatsappUrl && (
+                  <a
+                    href={whatsappUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="link-underline pb-0.5 font-medium text-ink"
+                  >
+                    Finalizar no WhatsApp
+                  </a>
+                )}
               </div>
               <button
                 type="button"

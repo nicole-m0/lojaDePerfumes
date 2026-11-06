@@ -2,20 +2,21 @@
 
 import { usePathname } from 'next/navigation'
 import { MessageCircle } from 'lucide-react'
-import { STORE_NAME, STORE_WHATSAPP_NUMBER } from '../config/store'
+import { STORE_NAME } from '../config/store'
+import { buildWhatsAppUrl } from '../lib/whatsapp'
 
 export default function WhatsAppButton() {
   const pathname = usePathname()
   // Página de produto no celular: já tem barra de compra fixa e link próprio para
   // o WhatsApp — o botão flutuante só cobriria conteúdo. Fica visível no desktop.
   const onProduct = pathname.startsWith('/produto/')
-  const message = encodeURIComponent(
-    `Olá! Vim do site da ${STORE_NAME} e gostaria de tirar uma dúvida.`,
-  )
+  const href = buildWhatsAppUrl(`Olá! Vim do site da ${STORE_NAME} e gostaria de tirar uma dúvida.`)
+  // Sem número de WhatsApp válido configurado: sem botão.
+  if (!href) return null
 
   return (
     <a
-      href={`https://wa.me/${STORE_WHATSAPP_NUMBER}?text=${message}`}
+      href={href}
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Falar com a loja no WhatsApp (abre em nova aba)"

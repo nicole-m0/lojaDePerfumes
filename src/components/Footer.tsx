@@ -1,6 +1,7 @@
 import Link from 'next/link'
-import { STORE_NAME, STORE_TAGLINE, STORE_WHATSAPP_NUMBER } from '../config/store'
+import { STORE_NAME, STORE_TAGLINE } from '../config/store'
 import { isMercadoPagoConfigured } from '@/lib/mercadopago'
+import { buildWhatsAppUrl } from '@/lib/whatsapp'
 import { BrandMark } from './brand/Logo'
 import { Container } from './shop/ui'
 
@@ -13,6 +14,9 @@ export default function Footer({ categories }: FooterProps) {
   const paymentLine = isMercadoPagoConfigured()
     ? 'Pagamento online pelo Mercado Pago'
     : 'Pagamento combinado com a loja após o pedido'
+  // `null` sem número de WhatsApp válido configurado — o botão e a menção ao
+  // atendimento pelo WhatsApp somem.
+  const whatsappUrl = buildWhatsAppUrl()
 
   const columnTitle = 'eyebrow mb-5 text-ivory/55'
   const link = 'link-underline pb-0.5 text-ivory/85 hover:text-ivory'
@@ -29,14 +33,16 @@ export default function Footer({ categories }: FooterProps) {
           <p className="mt-6 max-w-sm font-display text-3xl leading-tight text-ivory">
             {STORE_TAGLINE}
           </p>
-          <a
-            href={`https://wa.me/${STORE_WHATSAPP_NUMBER}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-8 inline-flex h-11 items-center border border-ivory/35 px-6 text-[0.75rem] font-semibold uppercase tracking-[0.16em] text-ivory transition-colors hover:bg-ivory hover:text-ink"
-          >
-            Fale conosco no WhatsApp
-          </a>
+          {whatsappUrl && (
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-8 inline-flex h-11 items-center border border-ivory/35 px-6 text-[0.75rem] font-semibold uppercase tracking-[0.16em] text-ivory transition-colors hover:bg-ivory hover:text-ink"
+            >
+              Fale conosco no WhatsApp
+            </a>
+          )}
         </div>
 
         <nav aria-labelledby="rodape-colecoes" className="md:col-span-3">
@@ -64,7 +70,7 @@ export default function Footer({ categories }: FooterProps) {
           <ul className="space-y-3 text-sm text-ivory/85">
             <li>Frete calculado no checkout, a partir do CEP</li>
             <li>{paymentLine}</li>
-            <li>Atendimento pelo WhatsApp</li>
+            {whatsappUrl && <li>Atendimento pelo WhatsApp</li>}
           </ul>
         </div>
       </Container>

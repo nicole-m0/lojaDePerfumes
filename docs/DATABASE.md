@@ -162,18 +162,116 @@ ficariam acessíveis pela API com a chave `anon`, que é pública.
 
 ### 3. Vercel (somente quando a produção for aprovada)
 
-| Variável | Production |
-|---|---|
-| `DATABASE_URL` | Transaction pooler (6543) com `?pgbouncer=true&connection_limit=1&sslmode=require` |
-| `AUTH_SECRET` | valor próprio |
-| `AUTH_URL` | `https://<domínio>.vercel.app` |
-| `AUTH_TRUST_HOST` | `true` |
-| `NEXT_PUBLIC_STORE_NAME` / `_TAGLINE` / `_WHATSAPP_NUMBER` | dados da Bella&Cheirosa |
-| Cloudinary | as mesmas chaves (a API Secret nunca com `NEXT_PUBLIC_`) |
-| Mercado Pago / Melhor Envio | somente teste/sandbox |
-| `DIRECT_URL`, `ADMIN_*`, `WHATSAPP_*` | **não definir** |
+Configuração da **D4**: demonstração publicada na Vercel, com Mercado Pago em ambiente
+de **teste** e frete demonstrativo. Valores reais só no painel da Vercel
+(Settings → Environment Variables, ambiente Production) — nunca no repositório.
 
-O build (`prisma generate && next build`) não precisa de `DIRECT_URL`.
+#### Regiões
+
+| Serviço | Região |
+|---|---|
+| Supabase (banco da demonstração) | `us-east-2` |
+| Vercel Functions (recomendada) | `cle1` (Cleveland, AWS `us-east-2`), se disponível no plano — mesma região AWS do banco |
+
+No plano Hobby as funções rodam em uma única região. Confira no painel do projeto
+(Settings → Functions) qual região está ativa antes dos testes.
+
+#### Banco: runtime × Prisma CLI
+
+| Variável | Na Vercel | Uso |
+|---|---|---|
+| `DATABASE_URL` | **definir** | Conexão do Supabase pelo **transaction pooler** (porta 6543) com `?pgbouncer=true&connection_limit=1&sslmode=require`. É a única URL usada pelo Prisma Client em runtime (loja, painel, webhook). |
+| `DIRECT_URL` | **não definir** | Session pooler (5432), necessária só para as operações **locais** do Prisma CLI (`npm run db:*`, migrations), lida do `.env.local`. O build (`prisma generate && next build`) não conecta ao banco e não precisa dela; o Prisma Client gerado não a utiliza em runtime. |
+
+#### Variáveis da D4
+
+| Variável | Production | Observações |
+|---|---|---|
+| `DATABASE_URL` | transaction pooler (ver acima) | runtime |
+| `AUTH_SECRET` | valor próprio | runtime; também assina os links de confirmação do pedido nas páginas de retorno do checkout |
+| `AUTH_URL` | `https://<projeto>.vercel.app` | ver [URL pública e Mercado Pago](#url-pública-e-mercado-pago) |
+| `AUTH_TRUST_HOST` | `true` | |
+| `NEXT_PUBLIC_STORE_NAME` / `_TAGLINE` | dados da Bella&Cheirosa (opcionais: há padrão no código) | **build** (embutidas no bundle) |
+| `NEXT_PUBLIC_STORE_WHATSAPP_NUMBER` | opcional: número real da loja, só dígitos, `55` + DDD + número | **build**; ver [WhatsApp](#whatsapp) |
+| `MERCADOPAGO_ACCESS_TOKEN` | access token de **teste** | runtime; nunca credencial de produção na D4 |
+| `MERCADOPAGO_WEBHOOK_SECRET` | assinatura secreta do webhook (painel do Mercado Pago) | runtime; sem ela o webhook recusa tudo (401) |
+| `SHIPPING_DEMO_MODE` | `true` | runtime; liga o frete demonstrativo (ver abaixo) |
+| `SHIPPING_DEMO_FLAT_CENTS` | opcional (padrão `1990` = R$ 19,90) | runtime |
+| `SHIPPING_ORIGIN_ZIP` | opcional | no modo demo só fica registrado no pedido |
+| Cloudinary | ver [Cloudinary](#cloudinary-públicas--segredos) | |
+| `DIRECT_URL`, `ADMIN_*`, `MELHORENVIO_*`, `WHATSAPP_*`, `NFE_PROVIDER_TOKEN` | **não definir** | |
+
+Variáveis `NEXT_PUBLIC_*` são lidas no **build**: precisam existir antes do deploy, e
+alterar o valor exige um novo deploy. As demais são lidas em runtime (alterar também
+pede redeploy para valer).
+
+#### Frete demonstrativo
+
+- Com `SHIPPING_DEMO_MODE=true` (valor exato) e sem Melhor Envio configurado, o checkout
+  oferece uma única opção, "Frete simulado", com valor fixo (`SHIPPING_DEMO_FLAT_CENTS`,
+  padrão R$ 19,90) e prazo fictício de 5–8 dias úteis. Checkout e painel identificam a
+  opção como simulação; nenhuma transportadora é consultada.
+- **`MELHORENVIO_*` sem configuração durante a D4:** com `MELHORENVIO_TOKEN` e CEP de
+  origem válidos, o Melhor Envio tem prioridade e o frete simulado não aparece. Uma falha
+  do Melhor Envio configurado bloqueia o checkout (não cai no simulado).
+- Sem nenhum dos dois, o checkout não avança para o pagamento.
+
+#### Cloudinary: públicas × segredos
+
+| Variável | Tipo | Quando é lida |
+|---|---|---|
+| `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` | pública (vai ao navegador) | build |
+| `NEXT_PUBLIC_CLOUDINARY_API_KEY` | pública — mesmo valor de `CLOUDINARY_API_KEY` | build |
+| `CLOUDINARY_API_KEY` | exclusiva do servidor | runtime |
+| `CLOUDINARY_API_SECRET` | **segredo**, exclusiva do servidor (`src/lib/cloudinary.ts`, protegido por `server-only`, e rota `/api/cloudinary/sign`) | runtime |
+
+A API Secret **nunca** recebe o prefixo `NEXT_PUBLIC_`. Ao cadastrar, confira que
+`NEXT_PUBLIC_CLOUDINARY_API_KEY` contém a API Key, e não a Secret.
+
+#### WhatsApp
+
+`WHATSAPP_*` ficam **sem configuração** durante a D4 e os testes: configuradas, a
+confirmação automática do pedido e as mudanças de status enviariam mensagens reais aos
+telefones informados nos pedidos de teste. Sem elas, o envio é ignorado
+(`not_configured`) sem afetar o pedido.
+
+`NEXT_PUBLIC_STORE_WHATSAPP_NUMBER` é outra coisa: o WhatsApp **da loja** (links
+`wa.me`), sem relação com `WHATSAPP_*`. É **opcional** e controla os cinco pontos de
+contato da loja: botão flutuante, rodapé, página da sacola, gaveta da sacola e página de
+produto. Formato: só dígitos, `55` + DDD + número (12 ou 13 dígitos). **Sem número
+válido** (ausente, vazio ou fora do formato), todos os links e menções de atendimento
+pelo WhatsApp ficam ocultos — não há número fictício de reserva. Por ser `NEXT_PUBLIC_*`,
+cadastrar ou trocar o número exige um novo deploy.
+
+#### URL pública e Mercado Pago
+
+`AUTH_URL` precisa ser uma URL **HTTPS, estável e sem barra final** — o domínio de
+produção do projeto (`https://<projeto>.vercel.app`) enquanto não houver domínio
+próprio. Nunca uma URL de preview ou de um deploy específico, que muda a cada deploy.
+
+A partir dela, `src/lib/mercadopago.ts` monta, para cada pedido:
+
+| URL | Valor |
+|---|---|
+| Webhook (`notification_url`) | `{AUTH_URL}/api/webhooks/mercadopago` |
+| Retorno (`back_urls`) | `{AUTH_URL}/checkout/sucesso`, `/checkout/falha`, `/checkout/pendente` (com número e token do pedido) |
+
+- Sem `AUTH_URL`, a base cai em `http://localhost:3000`: o webhook nunca chega e o
+  cliente não volta para a loja.
+- `auto_return` só é enviado com base HTTPS.
+- As URLs ficam gravadas na preferência de cada pedido: trocar `AUTH_URL` depois (ex.:
+  domínio próprio) não altera pedidos já criados. Ao trocar, faça novo deploy e
+  atualize a URL do webhook no painel do Mercado Pago.
+
+> **Não use previews protegidos para os testes do Mercado Pago.** Deploys de preview
+> ficam atrás da Deployment Protection da Vercel: o webhook receberia a tela de
+> autenticação da Vercel em vez da aplicação, e o cliente, ao voltar do Mercado Pago,
+> também. Faça os testes externos no deploy de **produção**, conferindo no painel da
+> Vercel que o domínio de produção está público. Os previews podem continuar
+> protegidos. O painel administrativo não depende dessa proteção: ele exige login e
+> papel de equipe na própria aplicação. Não use o bypass da proteção (segredo na URL)
+> nas URLs enviadas ao Mercado Pago — as URLs de retorno são abertas pelo navegador do
+> cliente.
 
 ### Plano Free
 

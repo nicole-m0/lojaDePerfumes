@@ -20,6 +20,8 @@ describe('nome da loja', () => {
 
   it('mensagens de WhatsApp usam o nome configurado', async () => {
     vi.stubEnv('NEXT_PUBLIC_STORE_NAME', '')
+    // Número válido só para gerar a URL (sem número, buildWhatsAppUrl devolve null).
+    vi.stubEnv('NEXT_PUBLIC_STORE_WHATSAPP_NUMBER', '5521987654321')
     const { buildCartMessage, buildProductMessage, buildWhatsAppUrl } = await import('./whatsapp')
     const product = { id: 'p', name: 'Perfume X', price: 10 } as never
     expect(buildCartMessage([{ product, quantity: 1 }], 10)).toContain('Bella&Cheirosa')

@@ -78,6 +78,8 @@ export default function CartView() {
   const hasUnavailable = pricing?.hasUnavailable ?? false
   const hasInsufficientStock = pricing?.hasInsufficientStock ?? false
   const blocked = hasUnavailable || hasInsufficientStock
+  // `null` sem número de WhatsApp válido configurado — o link some.
+  const whatsappUrl = buildWhatsAppUrl(buildCartMessage(items, totalPrice))
 
   return (
     <div className="grid gap-12 lg:grid-cols-12 lg:gap-16">
@@ -204,14 +206,16 @@ export default function CartView() {
           </Link>
         )}
 
-        <a
-          href={buildWhatsAppUrl(buildCartMessage(items, totalPrice))}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={buttonClasses('outline', 'md', 'mt-3 w-full')}
-        >
-          Finalizar pelo WhatsApp
-        </a>
+        {whatsappUrl && (
+          <a
+            href={whatsappUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={buttonClasses('outline', 'md', 'mt-3 w-full')}
+          >
+            Finalizar pelo WhatsApp
+          </a>
+        )}
       </aside>
     </div>
   )
