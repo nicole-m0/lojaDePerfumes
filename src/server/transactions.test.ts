@@ -108,7 +108,12 @@ describe('order-transitions.ts', () => {
     expect(body).toMatch(/result\.count !== 1/)
   })
 
-  it.each(['changeOrderStatusInTx', 'cancelOrderInTx', 'registerOrderReturnInTx'])(
+  it.each([
+    'changeOrderStatusInTx',
+    'cancelOrderInTx',
+    'registerOrderReturnInTx',
+    'confirmOrderAfterGatewayPaymentInTx',
+  ])(
     '%s: primeira operação é lockAndLoad(tx, …); status só depois',
     (name) => {
       const body = fnBody(src, name)
@@ -137,7 +142,13 @@ describe('order-lock.ts', () => {
 
 describe('estoque ligado a pedido (stock.ts)', () => {
   const src = read('server', 'stock.ts')
-  it.each(['readOrderStockLedger', 'decrementStockForOrder', 'restoreStockForOrder', 'registerPhysicalReturn'])(
+  it.each([
+    'readOrderStockLedger',
+    'decrementStockForOrder',
+    'restoreStockForOrder',
+    'registerPhysicalReturn',
+    'lockProductsAndFindShortages',
+  ])(
     '%s só usa o tx recebido',
     (name) => {
       expect(fnBody(src, name)).not.toMatch(/\bprisma\./)
@@ -169,5 +180,46 @@ describe('actions de pedido', () => {
     expect(src).toMatch(/changeOrderStatusInTx\(tx/)
     expect(src).toMatch(/cancelOrderInTx\(tx/)
     expect(src).toMatch(/registerOrderReturnInTx\(tx/)
+  })
+})
+
+describe('confirmação automática por pagamento do gateway (Etapa D2)', () => {
+  const payments = read('server', 'payments.ts')
+  const transitions = read('server', 'order-transitions.ts')
+
+  it('só applyGatewayPaymentUpdate dispara a confirmação, dentro da própria transação', () => {
+    const gateway = fnBody(payments, 'applyGatewayPaymentUpdate')
+    expect(gateway).toMatch(/confirmOrderAfterGatewayPaymentInTx\(tx,/)
+    const [tx] = interactiveTransactions(gateway)
+    expect(tx).toContain('confirmOrderAfterGatewayPaymentInTx(tx,')
+  })
+
+  it.each(['createManualPayment', 'transitionPaymentStatus'])(
+    '%s (pagamento manual) nunca confirma o pedido',
+    (name) => {
+      expect(fnBody(payments, name)).not.toMatch(/confirmOrder|confirmIfNewlyPaid/)
+    },
+  )
+
+  it('a confirmação só acontece para status traduzido PAID e resultado "applied"', () => {
+    const gateway = fnBody(payments, 'applyGatewayPaymentUpdate')
+    expect(gateway).toMatch(/input\.mappedStatus !== 'PAID'/)
+    expect(gateway).toMatch(/outcome !== 'applied'/)
+  })
+
+  it('confere o estoque (travando produtos) ANTES de mudar o status, e baixa depois', () => {
+    const body = fnBody(transitions, 'confirmOrderAfterGatewayPaymentInTx')
+    const check = body.indexOf('lockProductsAndFindShortages(tx')
+    const write = body.indexOf("setStatusIfUnchanged(tx, input.orderId, 'PENDING', 'CONFIRMED')")
+    const take = body.indexOf('decrementStockForOrder(tx')
+    expect(check).toBeGreaterThan(0)
+    expect(check).toBeLessThan(write)
+    expect(write).toBeLessThan(take)
+  })
+
+  it('a trava dos produtos usa FOR UPDATE em ordem de id', () => {
+    const body = fnBody(read('server', 'stock.ts'), 'lockProductsAndFindShortages')
+    expect(body).toMatch(/tx\.\$queryRaw[\s\S]*FROM "Product"[\s\S]*ORDER BY id FOR UPDATE/)
+    expect(body).toMatch(/\.sort\(\)/)
   })
 })

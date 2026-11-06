@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { getOrderConfirmation } from '@/server/orders'
 import { isMercadoPagoConfigured } from '@/lib/mercadopago'
 import CheckoutSuccess from '@/components/CheckoutSuccess'
+import { parseOrderNumberParam, parseTokenParam } from '@/lib/order-access'
 
 export const dynamic = 'force-dynamic'
 export const metadata: Metadata = {
@@ -12,13 +13,13 @@ export const metadata: Metadata = {
 }
 
 interface PageProps {
-  searchParams: Promise<{ pedido?: string; token?: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
 export default async function CheckoutSuccessPage({ searchParams }: PageProps) {
-  const { pedido, token } = await searchParams
-  const parsed = Number(pedido)
-  const number = Number.isInteger(parsed) && parsed > 0 ? parsed : null
+  const params = await searchParams
+  const number = parseOrderNumberParam(params.pedido)
+  const token = parseTokenParam(params.token)
 
   // Só mostra dados do pedido com token válido (ver getOrderConfirmation).
   // Retorno do cliente a esta página NÃO confirma pagamento: o status exibido é

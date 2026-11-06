@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getConfirmationCopy } from './checkout-copy'
+import { getConfirmationCopy, getReturnCopy } from './checkout-copy'
 
 const allText = (c: { title: string; body: string; footnote: string }) =>
   `${c.title} ${c.body} ${c.footnote}`.toLowerCase()
@@ -51,5 +51,45 @@ describe('getConfirmationCopy', () => {
       })
       expect(c.tone).toBe('pending')
     }
+  })
+})
+
+describe('getReturnCopy (Etapa D3)', () => {
+  const order = (paymentStatus: string) => ({ number: 7, paymentStatus, totalCents: 10000 })
+  const text = (c: { title: string; body: string; status: string }) =>
+    `${c.status} ${c.title} ${c.body}`.toLowerCase()
+
+  it.each(['pending', 'failure'] as const)('%s sem acesso: genérico, sem pedido, sem afirmar pagamento', (variant) => {
+    const c = getReturnCopy({ variant, order: null })
+    expect(c.showOrder).toBe(false)
+    expect(text(c)).not.toContain('confirmado')
+    expect(text(c)).toContain('link gerado no momento da compra')
+  })
+
+  it.each(['pending', 'failure'] as const)('%s com PENDING no banco nunca diz que foi pago', (variant) => {
+    const c = getReturnCopy({ variant, order: order('PENDING') })
+    expect(c.showOrder).toBe(true)
+    expect(c.tone).not.toBe('success')
+    expect(text(c)).not.toMatch(/pagamento confirmado|foi aprovado|pago com sucesso/)
+  })
+
+  it('falha + PENDING: avisa que tentar de novo cria um novo pedido', () => {
+    const c = getReturnCopy({ variant: 'failure', order: order('PENDING') })
+    expect(c.body).toContain('um novo pedido será criado')
+    expect(c.cta.href).toBe('/carrinho')
+  })
+
+  it.each(['pending', 'failure'] as const)('%s com PAID no banco: confirmado, sem pedir para pagar de novo', (variant) => {
+    const c = getReturnCopy({ variant, order: order('PAID') })
+    expect(c.tone).toBe('success')
+    expect(c.title).toBe('Pagamento confirmado')
+    expect(c.cta.href).toBe('/')
+  })
+
+  it.each(['PARTIALLY_PAID', 'REFUNDED', 'CHARGEBACK'])('%s: texto neutro de revisão', (status) => {
+    const c = getReturnCopy({ variant: 'pending', order: order(status) })
+    expect(c.tone).toBe('pending')
+    expect(text(c)).toContain('revisão')
+    expect(text(c)).not.toContain('confirmado')
   })
 })

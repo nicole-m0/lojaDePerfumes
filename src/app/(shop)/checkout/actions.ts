@@ -17,6 +17,7 @@ import {
   ShippingUnavailableError,
 } from '@/server/shipping'
 import { isValidZip } from '@/lib/shipping/cep'
+import { buildShippingQuoteSnapshot } from '@/lib/shipping/snapshot'
 import type { ShippingItemInput, ShippingOption } from '@/lib/shipping/types'
 
 const NONCE_COOKIE = 'bc_checkout_nonce'
@@ -50,7 +51,7 @@ export async function getCartPricing(
 }
 
 // ---------------------------------------------------------------------------
-// Leitura: cotação de frete (Melhor Envio) para a tela de checkout.
+// Leitura: cotação de frete (Melhor Envio ou frete demonstrativo) para o checkout.
 // O cliente escolhe uma opção; o preço só é confiado depois de RECOTADO no
 // servidor em `createWebsiteOrder`.
 // ---------------------------------------------------------------------------
@@ -157,7 +158,7 @@ const checkoutSchema = z
     complement: z.string().trim().optional().or(z.literal('').transform(() => undefined)),
     reference: z.string().trim().optional().or(z.literal('').transform(() => undefined)),
     addressPhone: z.string().trim().optional().or(z.literal('').transform(() => undefined)),
-    // Código do serviço de frete escolhido (Melhor Envio). Só referência — o
+    // Código do serviço de frete escolhido (Melhor Envio ou "demo-flat"). Só referência — o
     // preço é sempre RECOTADO no servidor antes de criar o pedido.
     shippingServiceCode: z.string().trim().min(1, 'Calcule e escolha uma opção de frete.'),
   })
@@ -373,22 +374,9 @@ export async function createWebsiteOrder(
           },
           // Snapshot imutável da cotação de frete escolhida (Fase 5). Independe de
           // Shipment — atualizar a entrega depois não altera este registro.
+          // `provider` vem da cotação do servidor: "melhorenvio" ou "demo" (D1).
           shippingQuote: {
-            create: {
-              originZip: shipping.quote.originZip,
-              destZip: shipping.quote.destZip,
-              provider: 'melhorenvio',
-              serviceCode: shipping.option.serviceCode,
-              serviceName: shipping.option.serviceName,
-              carrier: shipping.option.carrier,
-              priceCents: shipping.option.priceCents,
-              deliveryDaysMin: shipping.option.deliveryDaysMin,
-              deliveryDaysMax: shipping.option.deliveryDaysMax,
-              packageWeightGrams: shipping.quote.package.weightGrams,
-              packageHeightCm: shipping.quote.package.heightCm,
-              packageWidthCm: shipping.quote.package.widthCm,
-              packageLengthCm: shipping.quote.package.lengthCm,
-            },
+            create: buildShippingQuoteSnapshot(shipping.quote, shipping.option),
           },
           // Nenhum Payment é criado aqui: o(s) Payment(s) deste pedido nascem do
           // Mercado Pago (webhook / reconsulta) ou de registro manual no admin.

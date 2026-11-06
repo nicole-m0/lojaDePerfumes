@@ -6,7 +6,9 @@ vi.mock('server-only', () => ({}))
 import {
   buildPreferencePayload,
   getPublicBaseUrl,
+  getMercadoPagoPayment,
   isMercadoPagoConfigured,
+  isValidMercadoPagoPaymentId,
   verifyWebhookSignature,
 } from './mercadopago'
 
@@ -144,5 +146,43 @@ describe('verifyWebhookSignature', () => {
     expect(
       verifyWebhookSignature({ xSignature: `ts=${ts},v1=${v1}`, xRequestId: 'req-OUTRO', dataId, secret }),
     ).toBe(false)
+  })
+})
+
+describe('isValidMercadoPagoPaymentId (Etapa D3)', () => {
+  it.each(['1', '123456789012', '1'.repeat(20)])('aceita %j', (id) => {
+    expect(isValidMercadoPagoPaymentId(id)).toBe(true)
+  })
+
+  it.each([null, undefined, 123, '', ' 1', '1 ', '-1', '1.5', 'abc', '12a', '../1', '1/2', '1%2F2', '1'.repeat(21)])(
+    'recusa %j',
+    (id) => {
+      expect(isValidMercadoPagoPaymentId(id)).toBe(false)
+    },
+  )
+})
+
+describe('getMercadoPagoPayment — live_mode (Etapa D3)', () => {
+  beforeEach(() => {
+    process.env.MERCADOPAGO_ACCESS_TOKEN = 'TEST-token-falso'
+  })
+
+  function stubFetch(body: Record<string, unknown>) {
+    return vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }),
+    )
+  }
+  const raw = { id: 1, status: 'approved', external_reference: 'ord', transaction_amount: 10, currency_id: 'BRL' }
+
+  it.each([
+    [true, true],
+    [false, false],
+    [undefined, null],
+    ['true', null],
+  ])('live_mode=%j → liveMode %j', async (liveMode, expected) => {
+    const spy = stubFetch(liveMode === undefined ? raw : { ...raw, live_mode: liveMode })
+    const payment = await getMercadoPagoPayment('1')
+    expect(payment?.liveMode).toBe(expected)
+    spy.mockRestore()
   })
 })

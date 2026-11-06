@@ -50,3 +50,28 @@ export function verifyOrderAccessToken(
 export function orderReturnQuery(orderNumber: number, token: string): string {
   return `?pedido=${orderNumber}&token=${encodeURIComponent(token)}`
 }
+
+// --- Leitura segura dos parâmetros das páginas de retorno -------------------
+// O navegador (e o Mercado Pago, que acrescenta os próprios parâmetros na volta)
+// controla a query string. Nada dela é usado sem validação: o número só serve
+// para localizar o pedido, e os dados só aparecem se o token conferir no servidor.
+
+/** Inteiro positivo de até 10 dígitos, sem zeros à esquerda, sinais ou notação. */
+const ORDER_NUMBER_PATTERN = /^[1-9]\d{0,9}$/
+/** Maior valor de `Order.number` (coluna Int do PostgreSQL). */
+const MAX_ORDER_NUMBER = 2_147_483_647
+
+/**
+ * `?pedido=` → número do pedido, ou `null` se ausente, repetido (array) ou fora
+ * do formato. Recusa "1e3", "0x7", " 7", "-1", "07" etc., que `Number()` aceitaria.
+ */
+export function parseOrderNumberParam(value: unknown): number | null {
+  if (typeof value !== 'string' || !ORDER_NUMBER_PATTERN.test(value)) return null
+  const n = Number(value)
+  return n <= MAX_ORDER_NUMBER ? n : null
+}
+
+/** `?token=` → string, ou `null` se ausente ou repetido. O formato é conferido em `verifyOrderAccessToken`. */
+export function parseTokenParam(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null
+}

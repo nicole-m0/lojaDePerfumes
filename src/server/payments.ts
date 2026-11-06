@@ -4,6 +4,10 @@ import { prisma } from '@/lib/prisma'
 import { canTransition, summarizePayments, type PaymentStatusValue } from '@/lib/payment-status'
 import { can } from '@/lib/roles'
 import { lockOrderRow, ORDER_TX_OPTIONS } from '@/server/order-lock'
+import {
+  confirmOrderAfterGatewayPaymentInTx,
+  type GatewayConfirmationResult,
+} from '@/server/order-transitions'
 import type { StaffUser } from '@/server/guard'
 
 // Serviço central de pagamentos — toda mutação de Payment/Order.paymentStatus passa por
@@ -294,6 +298,11 @@ export interface GatewayApplyResult {
   paymentStatus: PaymentStatusValue
   /** id interno do Payment criado/atualizado, quando houver. */
   paymentId?: string
+  /**
+   * Resultado da confirmação automática do pedido (Etapa D2) — presente só quando
+   * ESTA atualização do gateway levou o pedido a PAID com um pagamento aprovado.
+   */
+  orderConfirmation?: GatewayConfirmationResult
 }
 
 export interface ApplyGatewayPaymentInput {
@@ -320,6 +329,10 @@ export interface ApplyGatewayPaymentInput {
  *   `canTransition` + `writePaymentTransition` (mesma lógica do caminho manual).
  * - REFUNDED e CHARGEBACK NUNCA são aplicados aqui — exigem OWNER. O gateway apenas
  *   registra um OrderEvent sinalizando que o OWNER precisa confirmar o estorno.
+ * - Confirmação automática (Etapa D2): quando um pagamento APROVADO pelo gateway
+ *   leva o pedido de "não pago" a PAID, o pedido é confirmado e o estoque baixado
+ *   NESTA MESMA transação (`confirmOrderAfterGatewayPaymentInTx`). Os caminhos
+ *   manuais (`createManualPayment` / `transitionPaymentStatus`) nunca confirmam.
  */
 export async function applyGatewayPaymentUpdate(
   input: ApplyGatewayPaymentInput,
@@ -334,6 +347,27 @@ export async function applyGatewayPaymentUpdate(
 
     const isReversal = input.mappedStatus === 'REFUNDED' || input.mappedStatus === 'CHARGEBACK'
     const note = `Mercado Pago: pagamento ${input.providerPaymentId} status "${input.rawStatus}".`
+
+    // Pedido já estava pago ANTES desta atualização (ex.: pagamento manual)? Então
+    // esta notificação não é a que o pagou — não dispara confirmação automática.
+    const paidBefore = summarizePayments(order.payments, order.totalCents).status === 'PAID'
+    const confirmIfNewlyPaid = async (
+      outcome: GatewayApplyOutcome,
+      paymentStatusAfter: PaymentStatusValue,
+    ): Promise<GatewayConfirmationResult | undefined> => {
+      if (
+        input.mappedStatus !== 'PAID' ||
+        outcome !== 'applied' ||
+        paidBefore ||
+        paymentStatusAfter !== 'PAID'
+      ) {
+        return undefined
+      }
+      return confirmOrderAfterGatewayPaymentInTx(tx, {
+        orderId: input.orderId,
+        providerPaymentId: input.providerPaymentId,
+      })
+    }
 
     // ---- Idempotência: já vimos exatamente este status cru para este pagamento ----
     if (existing && existing.providerStatus === input.rawStatus) {
@@ -423,7 +457,8 @@ export async function applyGatewayPaymentUpdate(
         ...order.payments,
         { status: initialStatus, amountCents: input.amountCents },
       ])
-      return { outcome, paymentStatus: summaryAfter.status, paymentId: created.id }
+      const orderConfirmation = await confirmIfNewlyPaid(outcome, summaryAfter.status)
+      return { outcome, paymentStatus: summaryAfter.status, paymentId: created.id, orderConfirmation }
     }
 
     // ---- Payment interno já existe: registra o novo status cru e decide ----
@@ -517,6 +552,7 @@ export async function applyGatewayPaymentUpdate(
       order.totalCents,
       nextPayments,
     )
-    return { outcome: 'applied', paymentStatus: summary.status, paymentId: existing.id }
+    const orderConfirmation = await confirmIfNewlyPaid('applied', summary.status)
+    return { outcome: 'applied', paymentStatus: summary.status, paymentId: existing.id, orderConfirmation }
   }, ORDER_TX_OPTIONS)
 }

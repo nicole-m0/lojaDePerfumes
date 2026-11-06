@@ -35,4 +35,6 @@ export interface ShippingOption {
   /** Prazo estimado em dias úteis (pode não vir do provedor). */
   deliveryDaysMin: number | null
   deliveryDaysMax: number | null
+  /** `true` só no frete demonstrativo (valor e prazo fictícios). */
+  simulated?: boolean
 }

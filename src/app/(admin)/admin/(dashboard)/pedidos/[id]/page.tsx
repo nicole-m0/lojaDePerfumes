@@ -16,6 +16,8 @@ import OrderStatusBadge from '@/components/admin/OrderStatusBadge'
 import OrderStatusControl from '@/components/admin/OrderStatusControl'
 import PaymentControl from '@/components/admin/PaymentControl'
 import ShipmentForm from '@/components/admin/ShipmentForm'
+import ShippingQuoteSummary from '@/components/admin/ShippingQuoteSummary'
+import { isDemoShippingProvider } from '@/lib/shipping/demo'
 import OrderNoteForm from '@/components/admin/OrderNoteForm'
 import OrderReturnForm from '@/components/admin/OrderReturnForm'
 
@@ -46,6 +48,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
   const [order, pendingReturns] = await Promise.all([getAdminOrder(id), getOrderPendingReturns(id)])
   if (!order) notFound()
   const canReverse = can(staff.role, 'paymentReverse')
+  const shippingSimulated = isDemoShippingProvider(order.shippingQuote?.provider)
   // Retorno físico: só pedidos cancelados após o envio ou entregues, e só o que saiu
   // e não voltou (o servidor recalcula tudo na hora de registrar).
   const productNames = new Map(order.items.map((i) => [i.productId, i.productName]))
@@ -196,7 +199,9 @@ export default async function OrderDetailPage({ params }: PageProps) {
               <dd className="tabular-nums">-{formatCents(order.discountCents)}</dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-muted-foreground">Frete</dt>
+              <dt className="text-muted-foreground">
+                {shippingSimulated ? 'Frete (simulado)' : 'Frete'}
+              </dt>
               <dd className="tabular-nums">{formatCents(order.shippingCents)}</dd>
             </div>
             <div className="flex justify-between border-t pt-1 font-semibold">
@@ -236,52 +241,13 @@ export default async function OrderDetailPage({ params }: PageProps) {
           </CardHeader>
           <CardContent className="space-y-4">
             {order.shippingQuote && (
-              <dl className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                <div className="mb-1 text-xs font-medium text-muted-foreground">
-                  Frete escolhido no checkout (snapshot — não muda ao atualizar a entrega)
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Serviço</dt>
-                  <dd>
-                    {order.shippingQuote.carrier
-                      ? `${order.shippingQuote.carrier} · `
-                      : ''}
-                    {order.shippingQuote.serviceName}
-                  </dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Valor</dt>
-                  <dd className="tabular-nums">{formatCents(order.shippingQuote.priceCents)}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Prazo estimado</dt>
-                  <dd>
-                    {order.shippingQuote.deliveryDaysMax != null
-                      ? `${
-                          order.shippingQuote.deliveryDaysMin &&
-                          order.shippingQuote.deliveryDaysMin !== order.shippingQuote.deliveryDaysMax
-                            ? `${order.shippingQuote.deliveryDaysMin}–`
-                            : ''
-                        }${order.shippingQuote.deliveryDaysMax} dias úteis`
-                      : '—'}
-                  </dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Cotado em</dt>
-                  <dd>{fmtDate(order.shippingQuote.quotedAt)}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">CEP origem → destino</dt>
-                  <dd className="tabular-nums">
-                    {order.shippingQuote.originZip} → {order.shippingQuote.destZip}
-                  </dd>
-                </div>
-              </dl>
+              <ShippingQuoteSummary quote={order.shippingQuote} formatDate={fmtDate} />
             )}
             <ShipmentForm
               orderId={order.id}
               shipment={order.shipment}
-              defaultCarrier={order.shippingQuote?.carrier ?? null}
+              // Frete simulado não tem transportadora real para sugerir.
+              defaultCarrier={shippingSimulated ? null : (order.shippingQuote?.carrier ?? null)}
             />
           </CardContent>
         </Card>

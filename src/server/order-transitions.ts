@@ -5,6 +5,7 @@ import { lockOrderRow } from '@/server/order-lock'
 import {
   decrementStockForOrder,
   InsufficientStockError,
+  lockProductsAndFindShortages,
   readOrderStockLedger,
   registerPhysicalReturn,
   restoreStockForOrder,
@@ -122,6 +123,101 @@ export async function changeOrderStatusInTx(
   })
 
   return { number: order.number, customerPhone: order.customerPhone, from }
+}
+
+// ---------------------------------------------------------------------------
+// Confirmação automática por pagamento aprovado no Mercado Pago (Etapa D2).
+// ---------------------------------------------------------------------------
+
+export type GatewayConfirmationOutcome =
+  | 'confirmed' // PENDING → CONFIRMED + baixa de estoque nesta transação
+  | 'already_confirmed' // pedido já estava CONFIRMED ou adiante — nada alterado
+  | 'order_canceled' // pedido CANCELED — não confirma; nota para o OWNER
+  | 'not_pending' // DRAFT — não confirma; nota para o OWNER
+  | 'insufficient_stock' // falta estoque — não confirma nem baixa; nota para o OWNER
+
+export interface GatewayConfirmationResult {
+  outcome: GatewayConfirmationOutcome
+  number: number
+  customerPhone: string | null
+}
+
+/**
+ * Confirma o pedido cujo pagamento acabou de ser aprovado pelo Mercado Pago.
+ * Chamada SÓ por `applyGatewayPaymentUpdate` (src/server/payments.ts), dentro da
+ * mesma transação que gravou o pagamento — registro manual de PAID no painel nunca
+ * passa por aqui.
+ *
+ * - Só PENDING é confirmado. CANCELED/DRAFT ficam como estão e geram nota para o
+ *   OWNER; CONFIRMED ou adiante não muda (a baixa já aconteceu na confirmação).
+ * - Estoque: trava os produtos e confere o saldo ANTES de mudar o status. Faltando
+ *   qualquer item, não confirma, não baixa nada e registra a ocorrência — o
+ *   pagamento continua gravado como pago.
+ * - Status (`setStatusIfUnchanged`) e baixa (`decrementStockForOrder`, pelo
+ *   histórico do pedido) usam as mesmas regras da confirmação manual. Qualquer
+ *   erro inesperado desfaz a transação inteira, inclusive o pagamento.
+ */
+export async function confirmOrderAfterGatewayPaymentInTx(
+  tx: Tx,
+  input: { orderId: string; providerPaymentId: string },
+): Promise<GatewayConfirmationResult> {
+  const order = await lockAndLoad(tx, input.orderId)
+  const base = { number: order.number, customerPhone: order.customerPhone }
+  const approved = `Pagamento ${input.providerPaymentId} aprovado pelo Mercado Pago`
+
+  const ownerNote = (note: string) =>
+    tx.orderEvent.create({
+      data: { orderId: input.orderId, type: 'NOTE', note: `ATENÇÃO (OWNER): ${note}`, userId: null },
+    })
+
+  if (order.status === 'CANCELED') {
+    await ownerNote(
+      `${approved}, mas o pedido está CANCELADO. Ele NÃO foi confirmado e o estoque NÃO foi ` +
+        `baixado. Avaliar o estorno do pagamento.`,
+    )
+    return { ...base, outcome: 'order_canceled' }
+  }
+  if (order.status === 'DRAFT') {
+    await ownerNote(
+      `${approved}, mas o pedido está em RASCUNHO. Ele NÃO foi confirmado automaticamente; ` +
+        `revise e confirme manualmente.`,
+    )
+    return { ...base, outcome: 'not_pending' }
+  }
+  if (order.status !== 'PENDING') return { ...base, outcome: 'already_confirmed' }
+
+  const shortages = await lockProductsAndFindShortages(tx, order.items, { orderId: input.orderId })
+  if (shortages.length > 0) {
+    const list = shortages
+      .map((s) => `${s.productName} (precisa ${s.required}, disponível ${s.available})`)
+      .join('; ')
+    await ownerNote(
+      `${approved}, mas não há estoque suficiente para: ${list}. O pedido NÃO foi confirmado ` +
+        `e o estoque NÃO foi baixado. Reponha o estoque e confirme o pedido manualmente, ou ` +
+        `cancele o pedido e estorne o pagamento.`,
+    )
+    return { ...base, outcome: 'insufficient_stock' }
+  }
+
+  await setStatusIfUnchanged(tx, input.orderId, 'PENDING', 'CONFIRMED')
+  // Produtos travados e saldo conferido acima: a baixa condicional não deve faltar.
+  // Se faltar mesmo assim, o erro desfaz a transação inteira (sem confirmação parcial).
+  await decrementStockForOrder(tx, order.items, { orderId: input.orderId, userId: null })
+
+  await tx.orderEvent.create({
+    data: {
+      orderId: input.orderId,
+      type: 'ORDER_STATUS_CHANGED',
+      fromStatus: 'PENDING',
+      toStatus: 'CONFIRMED',
+      note:
+        `Confirmado automaticamente após a aprovação do pagamento ${input.providerPaymentId} ` +
+        `pelo Mercado Pago. Estoque baixado.`,
+      userId: null,
+    },
+  })
+
+  return { ...base, outcome: 'confirmed' }
 }
 
 /**

@@ -7,6 +7,8 @@ interface OrderSummaryProps {
   totalCents: number
   /** Texto do frete enquanto não há valor (ex.: "calculado no checkout"). */
   shippingPendingLabel?: string
+  /** Frete escolhido é o simulado (modo demonstração) — o rótulo deixa isso explícito. */
+  shippingSimulated?: boolean
 }
 
 // Valores sempre vêm do servidor (getCartPricing) — nunca calculados no cliente.
@@ -16,6 +18,7 @@ export default function OrderSummary({
   shippingCents,
   totalCents,
   shippingPendingLabel = 'a calcular',
+  shippingSimulated = false,
 }: OrderSummaryProps) {
   return (
     <dl className="text-sm text-ink">
@@ -30,7 +33,7 @@ export default function OrderSummary({
         </div>
       )}
       <div className="flex justify-between py-1.5">
-        <dt className="text-ink-soft">Frete</dt>
+        <dt className="text-ink-soft">{shippingSimulated ? 'Frete (simulado)' : 'Frete'}</dt>
         <dd className="tabular-nums">
           {shippingCents > 0 ? formatCents(shippingCents) : shippingPendingLabel}
         </dd>

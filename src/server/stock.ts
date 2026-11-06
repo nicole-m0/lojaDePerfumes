@@ -82,6 +82,51 @@ export async function decrementStockForOrder(
   }
 }
 
+export interface StockShortage {
+  productId: string
+  productName: string
+  /** Unidades que ainda faltam sair para atender o pedido. */
+  required: number
+  /** Saldo atual do produto (0 se o produto não existir mais). */
+  available: number
+}
+
+/**
+ * Pré-checagem da confirmação automática (pagamento aprovado pelo gateway): trava
+ * as linhas dos produtos que ainda precisam sair (`SELECT … FOR UPDATE`, em ordem
+ * de id para evitar deadlock entre confirmações simultâneas) e devolve os que não
+ * têm saldo. Lista vazia = `decrementStockForOrder` na MESMA transação não falta.
+ *
+ * Usa a mesma regra de `decrementStockForOrder` (pedido − já saiu, por produto) e
+ * não grava nada — quem chama decide não confirmar, sem baixa parcial.
+ */
+export async function lockProductsAndFindShortages(
+  tx: Tx,
+  items: OrderItemForStock[],
+  ctx: { orderId: string },
+): Promise<StockShortage[]> {
+  const ledger = await readOrderStockLedger(tx, ctx.orderId)
+  const toTake = quantitiesToDecrement(requiredQuantityByProduct(items), ledger)
+  if (toTake.size === 0) return []
+
+  const ids = [...toTake.keys()].sort()
+  const rows = await tx.$queryRaw<{ id: string; stockOnHand: number }[]>`
+    SELECT id, "stockOnHand" FROM "Product" WHERE id = ANY(${ids}::text[]) ORDER BY id FOR UPDATE
+  `
+  const stockOf = new Map(rows.map((r) => [r.id, Number(r.stockOnHand)]))
+  const nameOf = new Map(items.map((i) => [i.productId, i.productName]))
+
+  const shortages: StockShortage[] = []
+  for (const productId of ids) {
+    const required = toTake.get(productId)!
+    const available = stockOf.get(productId) ?? 0
+    if (available < required) {
+      shortages.push({ productId, productName: nameOf.get(productId) ?? productId, required, available })
+    }
+  }
+  return shortages
+}
+
 /**
  * Devolução automática no cancelamento (mercadoria que nunca saiu da loja). Por
  * produto, devolve só o que saiu e ainda não voltou (`saiu(p) − voltou(p)`) —

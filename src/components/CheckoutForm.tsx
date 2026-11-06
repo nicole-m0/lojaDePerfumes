@@ -17,6 +17,7 @@ import { formatCents } from '../lib/format'
 import AddressFields, { EMPTY_ADDRESS, type AddressValue } from './AddressFields'
 import OrderSummary from './OrderSummary'
 import { buttonClasses } from './shop/ui'
+import { ShippingFootnote, ShippingOptionInfo } from './shop/ShippingOptionInfo'
 
 const inputClass =
   'mt-2 h-12 w-full border border-ink/20 bg-ivory px-4 text-sm text-ink outline-none transition-colors placeholder:text-ink-soft focus:border-ink'
@@ -30,14 +31,6 @@ function StepTitle({ n, children }: { n: string; children: React.ReactNode }) {
       {children}
     </h2>
   )
-}
-
-function deliveryText(o: ShippingOption): string {
-  if (o.deliveryDaysMax == null) return 'prazo a confirmar'
-  if (o.deliveryDaysMin && o.deliveryDaysMin !== o.deliveryDaysMax) {
-    return `${o.deliveryDaysMin}–${o.deliveryDaysMax} dias úteis`
-  }
-  return `${o.deliveryDaysMax} dias úteis`
 }
 
 export default function CheckoutForm({
@@ -60,7 +53,7 @@ export default function CheckoutForm({
   const [cepStatus, setCepStatus] = useState<'idle' | 'loading' | 'ok' | 'notfound'>('idle')
   const lastLookedUpZip = useRef<string>('')
 
-  // Frete (Melhor Envio) — cotado sob demanda; o preço só vale após recotar no submit.
+  // Frete (Melhor Envio ou simulado) — cotado sob demanda; o preço só vale após recotar no submit.
   const [shipOptions, setShipOptions] = useState<ShippingOption[] | null>(null)
   const [shipError, setShipError] = useState<string | null>(null)
   const [selectedService, setSelectedService] = useState('')
@@ -152,6 +145,7 @@ export default function CheckoutForm({
 
   const selectedOption = shipOptions?.find((o) => o.serviceCode === selectedService) ?? null
   const shippingCents = selectedOption?.priceCents ?? 0
+  const shippingSimulated = Boolean(shipOptions?.some((o) => o.simulated))
   const subtotalCents = pricing?.subtotalCents ?? 0
   const discountCents = pricing?.discountCents ?? 0
   const totalCents = subtotalCents - discountCents + shippingCents
@@ -207,6 +201,7 @@ export default function CheckoutForm({
             discountCents={discountCents}
             shippingCents={shippingCents}
             totalCents={totalCents}
+            shippingSimulated={Boolean(selectedOption?.simulated)}
           />
         </div>
       </details>
@@ -285,13 +280,7 @@ export default function CheckoutForm({
                       onChange={() => setSelectedService(o.serviceCode)}
                       className="h-4 w-4 accent-ink"
                     />
-                    <span className="flex-1">
-                      <span className="font-medium text-ink">
-                        {o.carrier ? `${o.carrier} · ` : ''}
-                        {o.serviceName}
-                      </span>
-                      <span className="block text-xs text-ink-soft">{deliveryText(o)}</span>
-                    </span>
+                    <ShippingOptionInfo option={o} />
                     <span className="font-semibold tabular-nums text-ink">{formatCents(o.priceCents)}</span>
                   </label>
                 </li>
@@ -299,9 +288,7 @@ export default function CheckoutForm({
             </ul>
           )}
 
-          <p className="text-xs text-ink-soft">
-            O valor do frete é reconfirmado com a transportadora ao concluir o pedido.
-          </p>
+          <ShippingFootnote simulated={shippingSimulated} />
         </section>
 
         <section className="space-y-6">
@@ -334,6 +321,7 @@ export default function CheckoutForm({
             discountCents={discountCents}
             shippingCents={shippingCents}
             totalCents={totalCents}
+            shippingSimulated={Boolean(selectedOption?.simulated)}
           />
         </div>
 

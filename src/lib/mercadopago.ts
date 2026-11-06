@@ -146,6 +146,11 @@ export interface MercadoPagoPayment {
   currencyId: string
   paymentTypeId: string | null
   paymentMethodId: string | null
+  /**
+   * `live_mode` da API: `true` = pagamento de produção, `false` = teste. `null`
+   * quando a API não informar. Só registrado (Etapa D3) — não bloqueia nada.
+   */
+  liveMode?: boolean | null
 }
 
 interface RawMpPayment {
@@ -156,6 +161,7 @@ interface RawMpPayment {
   currency_id: string
   payment_type_id?: string | null
   payment_method_id?: string | null
+  live_mode?: boolean | null
 }
 
 function normalizePayment(raw: RawMpPayment): MercadoPagoPayment {
@@ -167,6 +173,7 @@ function normalizePayment(raw: RawMpPayment): MercadoPagoPayment {
     currencyId: raw.currency_id,
     paymentTypeId: raw.payment_type_id ?? null,
     paymentMethodId: raw.payment_method_id ?? null,
+    liveMode: typeof raw.live_mode === 'boolean' ? raw.live_mode : null,
   }
 }
 
@@ -203,6 +210,19 @@ export async function searchMercadoPagoPaymentsByOrder(
   }
   const data = (await res.json()) as { results?: RawMpPayment[] }
   return (data.results ?? []).map(normalizePayment)
+}
+
+// --- Validação de entrada do webhook ---------------------------------------
+
+/**
+ * Id de pagamento do Mercado Pago: só dígitos, de 1 a 20 (os ids reais têm ~10–12;
+ * 20 cobre qualquer inteiro de 64 bits). Recusa vazio, sinais, espaços, letras,
+ * barras e qualquer coisa que pudesse alterar a URL da consulta à API.
+ */
+const PAYMENT_ID_PATTERN = /^\d{1,20}$/
+
+export function isValidMercadoPagoPaymentId(id: unknown): id is string {
+  return typeof id === 'string' && PAYMENT_ID_PATTERN.test(id)
 }
 
 // --- Validação de assinatura do webhook ---------------------------------

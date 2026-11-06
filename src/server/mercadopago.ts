@@ -5,6 +5,12 @@ import {
   applyGatewayPaymentUpdate,
   type GatewayApplyOutcome,
 } from '@/server/payments'
+import type {
+  GatewayConfirmationOutcome,
+  GatewayConfirmationResult,
+} from '@/server/order-transitions'
+import { whatsAppTemplateForStatus } from '@/lib/order-status'
+import { sendOrderWhatsAppNotification } from '@/server/whatsapp'
 import {
   getMercadoPagoPayment,
   MERCADO_PAGO_PROVIDER,
@@ -36,10 +42,42 @@ export interface ProcessResult {
   outcome: ProcessOutcome
   orderId?: string
   paymentStatus?: string
+  /**
+   * Confirmação automática do pedido (Etapa D2), quando este pagamento aprovado o
+   * levou a PAID. Só o resultado — sem dados do cliente (vai na resposta do webhook).
+   */
+  orderConfirmation?: GatewayConfirmationOutcome
+  /** `true` quando a API informou um pagamento de PRODUÇÃO (live_mode) — só registro. */
+  liveMode?: true
+}
+
+/**
+ * Aviso de pedido confirmado, chamado DEPOIS do commit. Best-effort: falha aqui
+ * nunca desfaz nem derruba a confirmação.
+ */
+export type NotifyOrderConfirmed = (input: {
+  orderId: string
+  confirmation: GatewayConfirmationResult
+}) => Promise<void>
+
+/** Código de idioma do template na Meta — o mesmo usado pelas actions de pedido. */
+const WHATSAPP_LANGUAGE_CODE = 'pt_BR'
+
+const notifyOrderConfirmedByWhatsApp: NotifyOrderConfirmed = async ({ orderId, confirmation }) => {
+  const templateName = whatsAppTemplateForStatus('CONFIRMED')
+  if (!templateName) return
+  await sendOrderWhatsAppNotification({
+    orderId,
+    phone: confirmation.customerPhone,
+    templateName,
+    languageCode: WHATSAPP_LANGUAGE_CODE,
+    bodyParams: [String(confirmation.number)],
+  })
 }
 
 export interface WebhookDeps {
   fetchPayment: (id: string) => Promise<MercadoPagoPayment | null>
+  notifyOrderConfirmed?: NotifyOrderConfirmed
 }
 
 const defaultWebhookDeps: WebhookDeps = { fetchPayment: getMercadoPagoPayment }
@@ -59,18 +97,33 @@ export async function processMercadoPagoNotification(
   const mp = await deps.fetchPayment(input.dataId)
   if (!mp) return { outcome: 'payment_not_found' }
 
-  return applyMercadoPagoPayment(mp)
+  return applyMercadoPagoPayment(mp, deps.notifyOrderConfirmed ?? notifyOrderConfirmedByWhatsApp)
 }
 
 /** Núcleo compartilhado: valida vínculo/valor de um pagamento do MP e aplica. */
-async function applyMercadoPagoPayment(mp: MercadoPagoPayment): Promise<ProcessResult> {
-  if (!mp.externalReference) return { outcome: 'order_not_found' }
+async function applyMercadoPagoPayment(
+  mp: MercadoPagoPayment,
+  notifyOrderConfirmed: NotifyOrderConfirmed,
+): Promise<ProcessResult> {
+  // live_mode (Etapa D3): apenas registrado, nunca bloqueia. Bloquear pagamentos de
+  // produção exige antes confirmar no sandbox (D4) qual valor os pagamentos de teste
+  // trazem — um bloqueio errado barraria notificações legítimas. Log sem dados do cliente.
+  const liveMode = mp.liveMode === true
+  if (liveMode) {
+    console.warn(
+      `[mercadopago] pagamento ${mp.id} veio com live_mode=true (produção) ` +
+        `para o pedido ${mp.externalReference ?? '?'}.`,
+    )
+  }
+  const withLiveMode = (r: ProcessResult): ProcessResult => (liveMode ? { ...r, liveMode: true } : r)
+
+  if (!mp.externalReference) return withLiveMode({ outcome: 'order_not_found' })
 
   const order = await prisma.order.findUnique({
     where: { id: mp.externalReference },
     select: { id: true, totalCents: true, currency: true },
   })
-  if (!order) return { outcome: 'order_not_found' }
+  if (!order) return withLiveMode({ outcome: 'order_not_found' })
 
   // Valor e moeda: o Mercado Pago devolve `transaction_amount` em reais.
   const mpCents = Math.round(mp.transactionAmount * 100)
@@ -86,7 +139,7 @@ async function applyMercadoPagoPayment(mp: MercadoPagoPayment): Promise<ProcessR
         userId: null,
       },
     })
-    return { outcome: 'amount_mismatch', orderId: order.id }
+    return withLiveMode({ outcome: 'amount_mismatch', orderId: order.id })
   }
 
   const result = await applyGatewayPaymentUpdate({
@@ -99,13 +152,30 @@ async function applyMercadoPagoPayment(mp: MercadoPagoPayment): Promise<ProcessR
     method: mapMercadoPagoMethod(mp.paymentTypeId, mp.paymentMethodId),
   })
 
-  return { outcome: result.outcome, orderId: order.id, paymentStatus: result.paymentStatus }
+  // A transação já foi confirmada (commit) quando chegamos aqui. O aviso é
+  // best-effort: um erro nele é só registrado, nunca muda o resultado.
+  const confirmation = result.orderConfirmation
+  if (confirmation?.outcome === 'confirmed') {
+    try {
+      await notifyOrderConfirmed({ orderId: order.id, confirmation })
+    } catch (err) {
+      console.error('[mercadopago] aviso de pedido confirmado falhou', err)
+    }
+  }
+
+  return withLiveMode({
+    outcome: result.outcome,
+    orderId: order.id,
+    paymentStatus: result.paymentStatus,
+    ...(confirmation ? { orderConfirmation: confirmation.outcome } : {}),
+  })
 }
 
 // --- Reconsulta administrativa ------------------------------------------
 
 export interface ReconcileDeps {
   searchPayments: (orderId: string) => Promise<MercadoPagoPayment[]>
+  notifyOrderConfirmed?: NotifyOrderConfirmed
 }
 
 const defaultReconcileDeps: ReconcileDeps = {
@@ -131,7 +201,9 @@ export async function reconcileOrderWithMercadoPago(
   const results: ProcessResult[] = []
   // A busca vem do mais novo para o mais antigo; aplica na ordem cronológica.
   for (const mp of [...payments].reverse()) {
-    results.push(await applyMercadoPagoPayment(mp))
+    results.push(
+      await applyMercadoPagoPayment(mp, deps.notifyOrderConfirmed ?? notifyOrderConfirmedByWhatsApp),
+    )
   }
   return { found: payments.length, results }
 }

@@ -6,6 +6,14 @@ import {
   isMelhorEnvioConfigured,
 } from '@/lib/shipping/melhorenvio'
 import { isValidZip, normalizeZip } from '@/lib/shipping/cep'
+import {
+  buildDemoShippingOption,
+  DEMO_SHIPPING_PROVIDER,
+  getDemoFlatRateCents,
+  isDemoShippingEnabled,
+  MELHORENVIO_SHIPPING_PROVIDER,
+  type ShippingProvider,
+} from '@/lib/shipping/demo'
 import type { PackageDimensions, ShippingItemInput, ShippingOption } from '@/lib/shipping/types'
 
 // ---------------------------------------------------------------------------
@@ -16,6 +24,12 @@ import type { PackageDimensions, ShippingItemInput, ShippingOption } from '@/lib
 //  - cota no Melhor Envio com cache curto em memória (mesma origem+destino+pacote);
 //  - degrada com erro tipado — o checkout BLOQUEIA o avanço para pagamento quando
 //    não há cotação (decisão da fase: nunca criar pedido com frete desconhecido).
+//
+// Frete demonstrativo (Etapa D1): se o Melhor Envio NÃO estiver configurado e
+// `SHIPPING_DEMO_MODE=true`, devolve uma única opção simulada (valor e prazo
+// fictícios, provider "demo"). Com o Melhor Envio configurado ele SEMPRE tem
+// prioridade — e uma falha dele continua bloqueando o checkout (não cai no demo,
+// para nunca misturar frete real com simulado sem aviso).
 //
 // NUNCA confia em preço vindo do cliente: o checkout recota aqui no submit e usa
 // o valor daqui como autoritativo (ver src/app/(shop)/checkout/actions.ts).
@@ -54,6 +68,9 @@ export interface QuoteShippingInput {
 }
 
 export interface ShippingQuoteResult {
+  /** Quem produziu a cotação — gravado em `ShippingQuote.provider`. */
+  provider: ShippingProvider
+  /** CEP de origem configurado; pode ser '' no modo demo sem SHIPPING_ORIGIN_ZIP. */
   originZip: string
   destZip: string
   package: PackageDimensions
@@ -68,15 +85,17 @@ export interface ShippingDeps {
 const defaultDeps: ShippingDeps = { calculate: calculateShipping, now: () => Date.now() }
 
 /**
- * Cota o frete para o conteúdo do carrinho. Lança `ShippingUnavailableError` se o
- * provedor não estiver configurado, o CEP for inválido, a chamada falhar ou não
- * houver nenhuma opção para o destino.
+ * Cota o frete para o conteúdo do carrinho. Ordem: Melhor Envio (se configurado)
+ * → frete demonstrativo (se `SHIPPING_DEMO_MODE=true`) → indisponível. Lança
+ * `ShippingUnavailableError` se nenhum dos dois estiver disponível, o CEP for
+ * inválido, a chamada ao Melhor Envio falhar ou não houver opção para o destino.
  */
 export async function quoteShippingForCart(
   input: QuoteShippingInput,
   deps: ShippingDeps = defaultDeps,
 ): Promise<ShippingQuoteResult> {
-  if (!isMelhorEnvioConfigured()) {
+  const useMelhorEnvio = isMelhorEnvioConfigured()
+  if (!useMelhorEnvio && !isDemoShippingEnabled()) {
     throw new ShippingUnavailableError('Cálculo de frete indisponível no momento.')
   }
 
@@ -92,12 +111,30 @@ export async function quoteShippingForCart(
 
   const originZip = getShippingOriginZip()
   const pkg = aggregatePackage(positiveItems)
+
+  if (!useMelhorEnvio) {
+    // Modo demonstração: nenhuma chamada externa, nenhum cache.
+    return {
+      provider: DEMO_SHIPPING_PROVIDER,
+      originZip,
+      destZip,
+      package: pkg,
+      options: [buildDemoShippingOption(getDemoFlatRateCents())],
+    }
+  }
+
   const key = cacheKey(originZip, destZip, pkg)
 
   if (!input.skipCache) {
     const cached = rateCache.get(key)
     if (cached && deps.now() - cached.at < CACHE_TTL_MS) {
-      return { originZip, destZip, package: pkg, options: cached.options }
+      return {
+        provider: MELHORENVIO_SHIPPING_PROVIDER,
+        originZip,
+        destZip,
+        package: pkg,
+        options: cached.options,
+      }
     }
   }
 
@@ -119,7 +156,7 @@ export async function quoteShippingForCart(
   }
 
   rateCache.set(key, { at: deps.now(), options })
-  return { originZip, destZip, package: pkg, options }
+  return { provider: MELHORENVIO_SHIPPING_PROVIDER, originZip, destZip, package: pkg, options }
 }
 
 /**

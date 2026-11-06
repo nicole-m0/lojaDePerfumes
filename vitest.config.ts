@@ -7,6 +7,11 @@ export default defineConfig({
   css: {
     postcss: {},
   },
+  // JSX no runtime automático (como o Next) — permite testar componentes com
+  // renderToStaticMarkup sem `import React`. Só afeta os testes; o build usa o SWC.
+  esbuild: {
+    jsx: 'automatic',
+  },
   test: {
     environment: 'node',
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
