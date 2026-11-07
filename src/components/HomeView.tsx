@@ -484,7 +484,7 @@ function AtelierBand() {
             {[
               ['Frete', 'Calculado no checkout a partir do CEP de entrega.'],
               ['Sacola', 'Guardada neste navegador enquanto você escolhe.'],
-              ['Atendimento', 'Dúvidas pelo WhatsApp da loja.'],
+              ['Atendimento', 'Informações claras para você comprar com tranquilidade.'],
             ].map(([title, text]) => (
               <div key={title}>
                 <dt className="eyebrow text-champagne-300">{title}</dt>

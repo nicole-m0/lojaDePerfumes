@@ -192,7 +192,7 @@ export default function ProductDetailView({ product, related }: ProductDetailVie
                   'Pagamento',
                   'As formas de pagamento disponíveis são apresentadas ao finalizar o pedido.',
                 ],
-                ['Dúvidas', 'Fale com a loja pelo WhatsApp antes ou depois da compra.'],
+                ['Dúvidas', 'Confira os detalhes do produto antes de finalizar sua compra.'],
               ].map(([title, text]) => (
                 <details key={title} className="group border-b border-hairline">
                   <summary className="flex cursor-pointer list-none items-center justify-between py-4 text-sm font-medium text-ink [&::-webkit-details-marker]:hidden">
