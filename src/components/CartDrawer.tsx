@@ -1,150 +1,182 @@
-// comandos no chat gpt...
-import { Link } from 'react-router-dom'
-import { Minus, Plus, ShoppingBag, Trash2, X } from 'lucide-react'
+'use client'
+
+import { useEffect } from 'react'
+import Link from 'next/link'
+import { X } from 'lucide-react'
 import { useCart } from '../context/useCart'
 import { formatPrice } from '../lib/format'
+import { clampToAvailable, MAX_QTY_PER_LINE } from '../lib/stock'
 import { buildCartMessage, buildWhatsAppUrl } from '../lib/whatsapp'
 import ProductVisual from './ProductVisual'
+import QuantityStepper from './shop/QuantityStepper'
+import { buttonClasses } from './shop/ui'
 
 export default function CartDrawer() {
-  const { items, isOpen, closeCart, removeItem, updateQuantity, totalPrice, clearCart } =
-    useCart()
+  const { items, isOpen, closeCart, removeItem, updateQuantity, totalPrice, clearCart } = useCart()
+
+  // Esc fecha a sacola.
+  useEffect(() => {
+    if (!isOpen) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && closeCart()
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [isOpen, closeCart])
+
+  // `null` sem número de WhatsApp válido configurado (ou sacola vazia) — o link some.
+  const whatsappUrl =
+    items.length > 0 ? buildWhatsAppUrl(buildCartMessage(items, totalPrice)) : null
 
   return (
     <>
       <div
         onClick={closeCart}
         aria-hidden="true"
-        className={`fixed inset-0 z-50 bg-neutral-900/40 backdrop-blur-sm transition-opacity duration-300 ${
+        className={`fixed inset-0 z-50 bg-ink/40 transition-opacity duration-300 ${
           isOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
       />
 
       <aside
         role="dialog"
-        aria-label="Carrinho de compras"
-        className={`fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col bg-white shadow-2xl transition-transform duration-300 ease-out ${
+        aria-modal="true"
+        aria-labelledby="sacola-titulo"
+        aria-hidden={!isOpen}
+        inert={!isOpen}
+        className={`fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col bg-ivory transition-transform duration-300 ease-out ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
-        <div className="flex items-center justify-between border-b border-venus-100 px-5 py-4">
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-neutral-800">
-            <ShoppingBag className="h-5 w-5 text-venus-600" />
-            Carrinho
+        <div className="flex items-center justify-between border-b border-hairline px-6 py-5">
+          <h2 id="sacola-titulo" className="text-3xl font-medium text-ink">
+            Sacola
+            {items.length > 0 && (
+              <span className="ml-2 align-middle font-sans text-sm font-normal tabular-nums text-ink-soft">
+                ({items.reduce((n, i) => n + i.quantity, 0)})
+              </span>
+            )}
           </h2>
           <button
             type="button"
             onClick={closeCart}
-            aria-label="Fechar carrinho"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-neutral-500 transition hover:bg-venus-50 hover:text-venus-600"
+            aria-label="Fechar sacola"
+            className="-mr-2 flex h-10 w-10 items-center justify-center text-ink"
           >
-            <X className="h-5 w-5" />
+            <X className="h-5 w-5" strokeWidth={1.5} />
           </button>
         </div>
 
         {items.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-venus-50">
-              <ShoppingBag className="h-7 w-7 text-venus-300" />
-            </div>
-            <p className="text-sm text-neutral-500">Seu carrinho está vazio.</p>
+          <div className="flex flex-1 flex-col items-start justify-center gap-4 px-6">
+            <p className="font-display text-3xl text-ink">Sua sacola está vazia.</p>
+            <p className="text-sm text-ink-soft">Explore as coleções e adicione o que gostar.</p>
             <Link
-              to="/"
+              href="/#catalogo"
               onClick={closeCart}
-              className="rounded-full bg-venus-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-venus-700"
+              className={buttonClasses('primary', 'md', 'mt-2')}
             >
-              Explorar produtos
+              Explorar a loja
             </Link>
           </div>
         ) : (
           <>
-            <ul className="flex-1 overflow-y-auto px-5 py-4">
+            <ul className="flex-1 divide-y divide-hairline overflow-y-auto px-6">
               {items.map((item) => (
-                <li
-                  key={item.product.id}
-                  className="flex gap-3 border-b border-venus-50 py-4 first:pt-0 last:border-none"
-                >
+                <li key={item.product.id} className="flex gap-4 py-5">
                   <Link
-                    to={`/produto/${item.product.slug}`}
+                    href={`/produto/${item.product.slug}`}
                     onClick={closeCart}
-                    className="shrink-0 overflow-hidden rounded-xl"
+                    className="shrink-0"
+                    tabIndex={-1}
+                    aria-hidden="true"
                   >
-                    <ProductVisual product={item.product} className="h-20 w-20" iconClassName="h-8 w-8" />
+                    <ProductVisual
+                      product={item.product}
+                      variant="thumb"
+                      className="aspect-[4/5] w-20"
+                    />
                   </Link>
 
-                  <div className="flex flex-1 flex-col gap-1">
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <p className="eyebrow text-[0.625rem] text-ink-soft">{item.product.brand}</p>
                     <Link
-                      to={`/produto/${item.product.slug}`}
+                      href={`/produto/${item.product.slug}`}
                       onClick={closeCart}
-                      className="line-clamp-2 text-sm font-medium text-neutral-800 transition hover:text-venus-600"
+                      className="mt-1 line-clamp-2 font-display text-lg leading-snug text-ink hover:underline"
                     >
                       {item.product.name}
                     </Link>
+                    <p className="mt-1 text-sm font-semibold tabular-nums text-ink">
+                      {formatPrice(item.product.price * item.quantity)}
+                    </p>
 
-                    <div className="mt-auto flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1 rounded-full border border-venus-100">
-                        <button
-                          type="button"
-                          onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                          aria-label="Diminuir quantidade"
-                          className="flex h-7 w-7 items-center justify-center rounded-full text-venus-600 transition hover:bg-venus-50"
-                        >
-                          <Minus className="h-3.5 w-3.5" />
-                        </button>
-                        <span className="w-5 text-center text-sm font-medium text-neutral-700">
-                          {item.quantity}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                          aria-label="Aumentar quantidade"
-                          className="flex h-7 w-7 items-center justify-center rounded-full text-venus-600 transition hover:bg-venus-50"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-
+                    <div className="mt-auto flex items-center justify-between gap-2 pt-3">
+                      <QuantityStepper
+                        value={item.quantity}
+                        label={item.product.name}
+                        onDecrease={() => updateQuantity(item.product.id, item.quantity - 1)}
+                        onIncrease={() => updateQuantity(item.product.id, item.quantity + 1)}
+                        canIncrease={
+                          item.quantity <
+                          clampToAvailable(MAX_QTY_PER_LINE, item.product.availableQuantity)
+                        }
+                      />
                       <button
                         type="button"
                         onClick={() => removeItem(item.product.id)}
-                        aria-label={`Remover ${item.product.name} do carrinho`}
-                        className="flex items-center gap-1 text-xs font-medium text-red-500 transition hover:text-red-600"
+                        aria-label={`Remover ${item.product.name} da sacola`}
+                        className="link-underline pb-0.5 text-xs text-ink-soft hover:text-ink"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
                         Remover
                       </button>
                     </div>
                   </div>
-
-                  <span className="shrink-0 self-start text-sm font-bold text-venus-600">
-                    {formatPrice(item.product.price * item.quantity)}
-                  </span>
                 </li>
               ))}
             </ul>
 
-            <div className="border-t border-venus-100 px-5 py-4">
-              <div className="mb-3 flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={clearCart}
-                  className="text-xs font-medium text-neutral-400 transition hover:text-red-500"
-                >
-                  Limpar carrinho
-                </button>
-                <div className="text-right">
-                  <span className="block text-xs text-neutral-400">Total</span>
-                  <span className="text-xl font-bold text-venus-600">{formatPrice(totalPrice)}</span>
-                </div>
+            <div className="border-t border-hairline bg-sand-50 px-6 py-5">
+              <div className="flex items-baseline justify-between">
+                <span className="text-sm text-ink-soft">Subtotal</span>
+                <span className="text-lg font-semibold tabular-nums text-ink">
+                  {formatPrice(totalPrice)}
+                </span>
               </div>
-              <a
-                href={buildWhatsAppUrl(buildCartMessage(items, totalPrice))}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex w-full items-center justify-center rounded-full bg-gradient-to-r from-venus-500 to-venus-600 py-3 text-sm font-bold text-white shadow-glow transition hover:brightness-110"
+              <p className="mt-1 text-xs text-ink-soft">
+                Frete e valores finais são confirmados no checkout.
+              </p>
+              <Link
+                href="/checkout"
+                onClick={closeCart}
+                className={buttonClasses('primary', 'lg', 'mt-5 w-full')}
               >
-                Finalizar pedido no WhatsApp
-              </a>
+                Finalizar compra
+              </Link>
+              <div className="mt-4 flex items-center justify-between gap-3 text-xs">
+                <Link
+                  href="/carrinho"
+                  onClick={closeCart}
+                  className="link-underline pb-0.5 font-medium text-ink"
+                >
+                  Ver sacola completa
+                </Link>
+                {whatsappUrl && (
+                  <a
+                    href={whatsappUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="link-underline pb-0.5 font-medium text-ink"
+                  >
+                    Finalizar no WhatsApp
+                  </a>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={clearCart}
+                className="mt-4 text-xs text-ink-soft underline-offset-4 hover:text-ink hover:underline"
+              >
+                Esvaziar sacola
+              </button>
             </div>
           </>
         )}

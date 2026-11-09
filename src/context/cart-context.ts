@@ -1,3 +1,5 @@
+'use client'
+
 import { createContext } from 'react'
 import type { CartItem, Product } from '../types'
 
@@ -8,6 +10,8 @@ export interface CartNotification {
 
 export interface CartContextValue {
   items: CartItem[]
+  /** `false` até o carrinho salvo no navegador ser lido (após a hidratação). */
+  isHydrated: boolean
   isOpen: boolean
   openCart: () => void
   closeCart: () => void
