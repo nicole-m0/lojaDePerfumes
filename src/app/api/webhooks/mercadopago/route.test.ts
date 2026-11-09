@@ -361,6 +361,38 @@ describe('live_mode', () => {
   })
 })
 
+describe('credencial recusada (só token TEST- é aceito)', () => {
+  it.each([
+    ['ausente', undefined],
+    ['vazia', ''],
+    ['real', 'APP_USR-segredo-real-987'],
+    ['minúscula', 'test-segredo-real-987'],
+  ])('credencial %s: 500 sem detalhes, sem chamar a API e sem gravar nada', async (_name, token) => {
+    // Usa a consulta REAL (o mock padrão deste arquivo a substituiria).
+    const real = await vi.importActual<typeof import('@/lib/mercadopago')>('@/lib/mercadopago')
+    h.fetchPayment = vi.fn((id: string) => real.getMercadoPagoPayment(id))
+    if (token === undefined) delete process.env.MERCADOPAGO_ACCESS_TOKEN
+    else process.env.MERCADOPAGO_ACCESS_TOKEN = token
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const res = await send()
+
+    expect(res.status).toBe(500)
+    expect(res.json).toEqual({ error: 'internal_error' })
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(st().payments).toHaveLength(0)
+    expect(st().orderEvents).toHaveLength(0)
+    expect(st().stockMovements).toHaveLength(0)
+    expect(order().status).toBe('PENDING')
+    expect(order().paymentStatus).toBe('PENDING')
+    expect(stock('p_rosa')).toBe(5)
+    expect(h.sendWhatsApp).not.toHaveBeenCalled()
+    const logged = errorLog.mock.calls.flat().map((v) => (v instanceof Error ? `${v.message} ${v.stack}` : String(v)))
+    expect(logged.join(' ')).not.toContain('segredo-real')
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Limite do corpo (correção R1 da auditoria D3): leitura em blocos, cancelada ao
 // passar de 64 KiB — com ou sem Content-Length.

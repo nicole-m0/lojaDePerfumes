@@ -5,24 +5,143 @@ vi.mock('server-only', () => ({}))
 
 import {
   buildPreferencePayload,
+  createCheckoutPreference,
   getPublicBaseUrl,
   getMercadoPagoPayment,
   isMercadoPagoConfigured,
   isValidMercadoPagoPaymentId,
+  searchMercadoPagoPaymentsByOrder,
   verifyWebhookSignature,
 } from './mercadopago'
 
 const ORIG = { ...process.env }
 afterEach(() => {
   process.env = { ...ORIG }
+  vi.restoreAllMocks()
 })
 
+const REFUSED_TOKENS = [
+  '',
+  ' ',
+  'TEST',
+  'TEST-',
+  'TEST_123',
+  'test-123',
+  'Test-123',
+  'xTEST-123',
+  ' TEST-123',
+  'TEST-123 ',
+  'TEST-12 3',
+  'TEST-123\n',
+  'APP_USR-123',
+  'PROD-123',
+]
+
+const PREFERENCE_INPUT = { orderId: 'o1', orderNumber: 1, totalCents: 100, currency: 'BRL' }
+
+const API_CALLS = [
+  ['createCheckoutPreference', () => createCheckoutPreference(PREFERENCE_INPUT)],
+  ['getMercadoPagoPayment', () => getMercadoPagoPayment('1')],
+  ['searchMercadoPagoPaymentsByOrder', () => searchMercadoPagoPaymentsByOrder('o1')],
+] as const
+
+function setToken(token: string | undefined) {
+  if (token === undefined) delete process.env.MERCADOPAGO_ACCESS_TOKEN
+  else process.env.MERCADOPAGO_ACCESS_TOKEN = token
+}
+
+function jsonResponse(body: unknown) {
+  return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+}
+
 describe('isMercadoPagoConfigured', () => {
-  it('true só quando há MERCADOPAGO_ACCESS_TOKEN', () => {
-    delete process.env.MERCADOPAGO_ACCESS_TOKEN
-    expect(isMercadoPagoConfigured()).toBe(false)
-    process.env.MERCADOPAGO_ACCESS_TOKEN = 'TEST-123'
+  it.each(['TEST-123', 'TEST-abc-DEF_456'])('aceita %j', (token) => {
+    setToken(token)
     expect(isMercadoPagoConfigured()).toBe(true)
+  })
+
+  it.each([undefined, ...REFUSED_TOKENS])('recusa %j', (token) => {
+    setToken(token)
+    expect(isMercadoPagoConfigured()).toBe(false)
+  })
+})
+
+describe('proteção da credencial nas chamadas à API', () => {
+  describe.each(API_CALLS)('%s', (_name, call) => {
+    it.each([undefined, ...REFUSED_TOKENS])('token %j: rejeita sem nenhuma chamada ao fetch', async (token) => {
+      setToken(token)
+      const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+      await expect(call()).rejects.toThrow('Credencial do Mercado Pago ausente ou recusada')
+
+      expect(fetchSpy).not.toHaveBeenCalled()
+    })
+
+    it.each(['APP_USR-segredo-real-987', 'test-segredo-real-987'])(
+      'a mensagem de erro não revela o token %j',
+      async (token) => {
+        setToken(token)
+        vi.spyOn(globalThis, 'fetch')
+
+        const error = (await call().catch((err: unknown) => err)) as Error
+
+        expect(error).toBeInstanceOf(Error)
+        expect(error.message).not.toContain(token)
+        expect(error.message).not.toContain('segredo-real')
+        expect(String(error.stack)).not.toContain('segredo-real')
+      },
+    )
+  })
+
+  it.each([
+    ['createCheckoutPreference', () => createCheckoutPreference(PREFERENCE_INPUT), { id: 'p1', sandbox_init_point: 'https://sandbox.example/p1' }],
+    ['getMercadoPagoPayment', () => getMercadoPagoPayment('1'), { id: 1, status: 'approved', external_reference: 'o1', transaction_amount: 1, currency_id: 'BRL' }],
+    ['searchMercadoPagoPaymentsByOrder', () => searchMercadoPagoPaymentsByOrder('o1'), { results: [] }],
+  ] as const)('%s com token TEST- chama a API uma vez, com esse token', async (_name, call, body) => {
+    setToken('TEST-token-falso')
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(body))
+
+    await call()
+
+    expect(fetchSpy).toHaveBeenCalledOnce()
+    const init = fetchSpy.mock.calls[0][1] as RequestInit
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer TEST-token-falso')
+  })
+})
+
+describe('createCheckoutPreference — somente sandbox_init_point', () => {
+  const PRODUCTION_URL = 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=p1'
+  const SANDBOX_URL = 'https://sandbox.mercadopago.com.br/checkout/v1/redirect?pref_id=p1'
+
+  beforeEach(() => setToken('TEST-token-falso'))
+
+  it('com os dois links, usa o sandbox e nunca o init_point', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({ id: 'p1', init_point: PRODUCTION_URL, sandbox_init_point: SANDBOX_URL }),
+    )
+
+    const preference = await createCheckoutPreference(PREFERENCE_INPUT)
+
+    expect(preference).toEqual({ id: 'p1', initPoint: SANDBOX_URL })
+  })
+
+  it.each([
+    ['ausente', { id: 'p1', init_point: PRODUCTION_URL }],
+    ['vazio', { id: 'p1', init_point: PRODUCTION_URL, sandbox_init_point: '' }],
+    ['nulo', { id: 'p1', init_point: PRODUCTION_URL, sandbox_init_point: null }],
+  ])('sandbox_init_point %s: rejeita em vez de usar o init_point', async (_name, body) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(body))
+
+    const error = (await createCheckoutPreference(PREFERENCE_INPUT).catch((err: unknown) => err)) as Error
+
+    expect(error.message).toBe('Mercado Pago: resposta de preferência sem id/sandbox_init_point.')
+    expect(error.message).not.toContain(PRODUCTION_URL)
+  })
+
+  it('sem id: rejeita mesmo com sandbox_init_point', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ sandbox_init_point: SANDBOX_URL }))
+
+    await expect(createCheckoutPreference(PREFERENCE_INPUT)).rejects.toThrow('sem id/sandbox_init_point')
   })
 })
 

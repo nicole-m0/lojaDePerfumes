@@ -8,9 +8,11 @@ import { STORE_NAME } from '@/config/store'
 // Cliente Mercado Pago — Checkout Pro (Fase 4).
 //
 // Sem SDK: chamadas REST diretas com `fetch`. O token de acesso e o segredo do
-// webhook vêm SEMPRE de variáveis de ambiente, nunca do código. Esta fase é
-// validada em sandbox/teste — as credenciais de teste do Mercado Pago fazem o
-// `init_point` já apontar para o ambiente de teste.
+// webhook vêm SEMPRE de variáveis de ambiente, nunca do código.
+//
+// Esta loja é uma demonstração: só aceita token de teste (prefixo exato `TEST-`) e
+// só redireciona para `sandbox_init_point`. Não há variável que libere credencial
+// real — cobrar de verdade exige mudar este arquivo de propósito.
 //
 // Nada aqui decide estado de pagamento: a tradução do status do gateway para o
 // nosso domínio é `mapMercadoPagoStatus` (src/lib/payment-status.ts) e a
@@ -21,8 +23,16 @@ const MP_API = 'https://api.mercadopago.com'
 
 export const MERCADO_PAGO_PROVIDER = 'mercadopago'
 
+/** Prefixo exato `TEST-` seguido de conteúdo, sem espaços ou quebras de linha. */
+const DEMO_TOKEN_PATTERN = /^TEST-\S+$/
+
+function isAllowedDemoToken(token: string | undefined): token is string {
+  return typeof token === 'string' && DEMO_TOKEN_PATTERN.test(token)
+}
+
+/** `false` sem token ou com token que não seja de teste: a loja age como sem pagamento online. */
 export function isMercadoPagoConfigured(): boolean {
-  return Boolean(process.env.MERCADOPAGO_ACCESS_TOKEN)
+  return isAllowedDemoToken(process.env.MERCADOPAGO_ACCESS_TOKEN)
 }
 
 /** URL pública do app — usada para back_urls e notification_url da preferência. */
@@ -31,9 +41,15 @@ export function getPublicBaseUrl(): string {
   return raw.replace(/\/+$/, '')
 }
 
+/**
+ * Único ponto que entrega o token às chamadas à API: é avaliado antes de cada
+ * `fetch`, então um token recusado nunca sai do servidor. A mensagem não cita o valor.
+ */
 function accessToken(): string {
   const token = process.env.MERCADOPAGO_ACCESS_TOKEN
-  if (!token) throw new Error('MERCADOPAGO_ACCESS_TOKEN não configurado.')
+  if (!isAllowedDemoToken(token)) {
+    throw new Error('Credencial do Mercado Pago ausente ou recusada: a demonstração só aceita token de teste.')
+  }
   return token
 }
 
@@ -124,14 +140,14 @@ export async function createCheckoutPreference(
     throw new Error(`Mercado Pago: falha ao criar preferência (${res.status}) ${detail}`)
   }
 
+  // `init_point` é ignorado de propósito: sem `sandbox_init_point` não há redirecionamento.
   const data = (await res.json()) as {
     id?: string | number
-    init_point?: string
     sandbox_init_point?: string
   }
-  const initPoint = data.init_point || data.sandbox_init_point
+  const initPoint = data.sandbox_init_point
   if (!data.id || !initPoint) {
-    throw new Error('Mercado Pago: resposta de preferência sem id/init_point.')
+    throw new Error('Mercado Pago: resposta de preferência sem id/sandbox_init_point.')
   }
   return { id: String(data.id), initPoint }
 }
